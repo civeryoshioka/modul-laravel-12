@@ -318,7 +318,7 @@ class BookController extends Controller
 
 Lakukan pola yang sama untuk `CategoryController`, `MemberController`, dan `LoanController` — cukup ganti nama class dan string dummy sesuai nama Controller masing-masing.
 
-Khusus `CategoryController`, **hapus method `show()`**. Merujuk ke struktur view yang sudah disepakati sejak awal modul (lihat `CLAUDE.md`), folder `categories/` hanya berisi `index`, `create`, `edit` — tidak ada halaman detail kategori tersendiri, karena info kategori cukup ditampilkan langsung di daftar buku. Karena method-nya memang tidak akan pernah dipakai, method tersebut dihapus dari Controller, bukan dibiarkan kosong tak terpakai:
+Khusus `CategoryController`, **hapus method `show()`**. Merujuk ke struktur view yang sudah disepakati sejak awal modul, folder `categories/` hanya berisi `index`, `create`, `edit` — tidak ada halaman detail kategori tersendiri, karena info kategori cukup ditampilkan langsung di daftar buku. Karena method-nya memang tidak akan pernah dipakai, method tersebut dihapus dari Controller, bukan dibiarkan kosong tak terpakai:
 
 ```php
 // File: app/Http/Controllers/CategoryController.php
