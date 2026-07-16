@@ -121,6 +121,68 @@ Ini tabel penghubung (*junction table*) yang membuat satu transaksi peminjaman (
 
 ## Relasi Antar Tabel
 
+### Diagram ER
+
+```mermaid
+erDiagram
+    CATEGORIES ||--o{ BOOKS : "punya banyak"
+    BOOKS ||--o{ LOAN_ITEMS : "muncul di"
+    MEMBERS ||--o{ LOANS : "melakukan"
+    USERS ||--o{ LOANS : "menginput"
+    LOANS ||--o{ LOAN_ITEMS : "berisi"
+
+    CATEGORIES {
+        bigint id PK
+        varchar nama_kategori
+        text deskripsi
+    }
+    BOOKS {
+        bigint id PK
+        varchar judul
+        varchar penulis
+        varchar penerbit
+        year tahun_terbit
+        varchar isbn
+        int stok
+        bigint category_id FK
+        varchar sampul
+    }
+    MEMBERS {
+        bigint id PK
+        varchar nama
+        varchar nim
+        varchar email
+        varchar nomor_telepon
+        text alamat
+        enum status
+    }
+    USERS {
+        bigint id PK
+        varchar name
+        varchar email
+        varchar password
+        enum role
+    }
+    LOANS {
+        bigint id PK
+        bigint member_id FK
+        bigint user_id FK
+        date tanggal_pinjam
+        date tanggal_kembali
+        date tanggal_dikembalikan
+        enum status
+    }
+    LOAN_ITEMS {
+        bigint id PK
+        bigint loan_id FK
+        bigint book_id FK
+    }
+```
+
+> Diagram ini otomatis tampil sebagai gambar kalau dibuka di GitHub (mendukung Mermaid secara native). Kalau dibuka di editor teks biasa, kode di atas tetap bisa dibaca manual mengikuti pola `TABEL_A ||--o{ TABEL_B` = "satu `TABEL_A` punya banyak `TABEL_B`".
+
+### Ringkasan Relasi (Teks)
+
 ```
 categories ──────< books          One-to-Many  (1 kategori punya banyak buku)
 users ───────────< loans          One-to-Many  (1 petugas menginput banyak transaksi)
