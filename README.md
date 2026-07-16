@@ -18,5 +18,18 @@ Selamat datang di modul ajar Pemrograman Framework menggunakan Laravel 12.
 | 10 | Blade + Konsumsi API & Project Clinic | [Buka](./pertemuan-10.md) |
 | 11 | UAS | [Buka](./pertemuan-11.md) |
 
+## Studi Kasus yang Digunakan
+
+Pembelajaran di modul ini **tidak berpindah-pindah topik contoh** — dari Pertemuan 1 sampai UAS, seluruh konsep (MVC, routing, validasi, migration, relasi, autentikasi, API) dipraktikkan lewat satu studi kasus yang sama: **Sistem Perpustakaan Digital Kampus**, aplikasi yang dikelola Admin/Petugas untuk mengelola buku, anggota, dan transaksi peminjaman.
+
+Beberapa fitur akhir yang akan terbentuk bertahap sepanjang semester:
+- CRUD Kategori Buku, Buku, dan Anggota Perpustakaan
+- Transaksi Peminjaman & Pengembalian Buku
+- Autentikasi Petugas dengan proteksi route (Middleware)
+- REST API untuk data buku, anggota, dan peminjaman
+- Dashboard statistik & halaman laporan
+
+Project ini dibangun bertahap, bukan sekaligus — jadi wajar kalau di pertemuan awal sebagian fitur di atas belum ada. Sebelum mulai mengerjakan pertemuan manapun (terutama Pertemuan 1 dan Pertemuan 5), baca dulu **[Studi Kasus & Desain Database](./studi-kasus-database.md)** untuk gambaran lengkap aktor, desain tabel, dan relasi antar tabelnya.
+
 ## Repository Kode
 Project referensi: [app-perpustakaan](https://github.com/[USERNAME]/app-perpustakaan)

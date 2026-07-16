@@ -36,6 +36,14 @@ Kenapa pemisahan ini penting? Pertama, **separation of concerns** — setiap bag
 
 ---
 
+## Studi Kasus: Sistem Perpustakaan Digital Kampus
+
+Sepanjang modul ini, seluruh konsep di atas — MVC, routing, validasi, dan seterusnya — akan langsung dipraktikkan lewat satu project yang sama dari pertemuan ke pertemuan: **Sistem Perpustakaan Digital Kampus**, aplikasi yang dikelola petugas/admin untuk mengelola buku, anggota, dan transaksi peminjaman.
+
+Project ini tidak dibangun sekaligus. Pertemuan ini baru menyiapkan kerangka kosongnya (instalasi Laravel, koneksi database), dan setiap pertemuan berikutnya menambah satu-dua bagian sampai jadi aplikasi utuh di UAS. Supaya kamu tidak "tersesat" di tengah jalan — misalnya bingung kenapa tabel `loan_items` ada padahal belum pernah dijelaskan — baca dulu **[Studi Kasus & Desain Database](./studi-kasus-database.md)** yang berisi gambaran lengkap aktor, fitur akhir, desain tabel, dan relasinya. Halaman itu jadi referensi yang bisa dibuka ulang kapan pun sepanjang semester, terutama nanti di Pertemuan 5 saat tabel-tabelnya benar-benar dibuat.
+
+---
+
 ## Materi
 
 ### Evolusi Pengembangan Web: Spaghetti Code → Framework
