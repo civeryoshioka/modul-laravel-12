@@ -174,6 +174,30 @@ php artisan make:resource MemberResource
 php artisan make:resource LoanResource
 ```
 
+Hasil scaffolding di atas masih berupa class kosong. Sebelum menyalin method-method di Langkah 3 sampai 7, tambahkan dulu `use` statement berikut di bagian atas tiap Controller (di bawah `namespace`) — tanpa ini, PHP akan melempar error `Class "Book" not found` (atau sejenisnya) begitu method dijalankan, karena class yang dipakai di dalam method tidak dikenali tanpa diimpor lebih dulu:
+
+```php
+// File: app/Http/Controllers/Api/BookController.php
+use App\Http\Requests\StoreBookRequest;
+use App\Http\Resources\BookResource;
+use App\Models\Book;
+// use Illuminate\Http\Request; sudah otomatis ada dari hasil scaffold
+
+// File: app/Http/Controllers/Api/MemberController.php
+use App\Http\Resources\MemberResource;
+use App\Models\Member;
+
+// File: app/Http/Controllers/Api/LoanController.php
+use App\Http\Resources\LoanResource;
+use App\Models\Loan;
+// use Illuminate\Http\Request; sudah otomatis ada dari hasil scaffold
+
+// File: app/Http/Controllers/Api/StatsController.php
+use App\Models\Book;
+use App\Models\Loan;
+use App\Models\Member;
+```
+
 ### Langkah 3 — Mengisi `BookResource`, `MemberResource`, `LoanResource`
 
 Ketiga Resource mendefinisikan field yang boleh dikirim ke klien. `LoanResource` sekaligus mengubah relasi `member`, `user` (ditampilkan sebagai `petugas`), dan `loanItems.book` (ditampilkan sebagai `books`) jadi struktur nested yang rapi:
@@ -227,7 +251,25 @@ public function toArray(Request $request): array
 }
 ```
 
-`MemberResource` mengikuti pola yang sama, cukup mengembalikan kolom-kolom `members` apa adanya karena tidak ada relasi yang perlu ditransformasi untuk kebutuhan endpoint `GET /api/members`.
+`MemberResource` mengikuti pola yang sama, cukup mengembalikan kolom-kolom `members` apa adanya karena tidak ada relasi yang perlu ditransformasi untuk kebutuhan endpoint `GET /api/members`:
+
+```php
+// File: app/Http/Resources/MemberResource.php
+public function toArray(Request $request): array
+{
+    return [
+        'id' => $this->id,
+        'nama' => $this->nama,
+        'nim' => $this->nim,
+        'email' => $this->email,
+        'nomor_telepon' => $this->nomor_telepon,
+        'alamat' => $this->alamat,
+        'status' => $this->status,
+        'created_at' => $this->created_at,
+        'updated_at' => $this->updated_at,
+    ];
+}
+```
 
 ### Langkah 4 — Endpoint Books: Filter dan Pagination
 
@@ -267,7 +309,58 @@ public function store(StoreBookRequest $request)
 }
 ```
 
-`->setStatusCode(201)` secara eksplisit menandai response sebagai "resource berhasil dibuat" — status code default Laravel untuk return value biasa adalah `200`, tapi konvensi REST mengharapkan `201` khusus untuk operasi create. Method `show`, `update`, dan `destroy` melengkapi CRUD penuh untuk `books` sesuai daftar endpoint yang diminta.
+`->setStatusCode(201)` secara eksplisit menandai response sebagai "resource berhasil dibuat" — status code default Laravel untuk return value biasa adalah `200`, tapi konvensi REST mengharapkan `201` khusus untuk operasi create.
+
+`show()` mengembalikan satu buku beserta kategorinya, memakai `findOrFail()` supaya Laravel otomatis merespons `404` kalau id yang diminta tidak ada:
+
+```php
+// File: app/Http/Controllers/Api/BookController.php
+public function show(string $id)
+{
+    $book = Book::with('category')->findOrFail($id);
+
+    return new BookResource($book);
+}
+```
+
+`update()` memakai validasi inline (bukan Form Request) — pola yang sama seperti `BookController@update` di sisi web Pertemuan 5, sebagai perbandingan dengan `store()` yang memakai Form Request:
+
+```php
+// File: app/Http/Controllers/Api/BookController.php
+public function update(Request $request, string $id)
+{
+    $book = Book::findOrFail($id);
+
+    $validated = $request->validate([
+        'judul' => 'required|string|max:200',
+        'penulis' => 'required|string|max:100',
+        'penerbit' => 'required|string|max:100',
+        'tahun_terbit' => 'required|integer|min:1900|max:'.date('Y'),
+        'isbn' => 'nullable|string|max:20',
+        'stok' => 'required|integer|min:0',
+        'category_id' => 'required|integer|exists:categories,id',
+    ]);
+
+    $book->update($validated);
+
+    return new BookResource($book->load('category'));
+}
+```
+
+`destroy()` menghapus buku dan membalas dengan pesan konfirmasi sederhana — tidak memakai API Resource karena tidak ada lagi data buku yang perlu diformat setelah dihapus:
+
+```php
+// File: app/Http/Controllers/Api/BookController.php
+public function destroy(string $id)
+{
+    $book = Book::findOrFail($id);
+    $book->delete();
+
+    return response()->json(['message' => 'Buku berhasil dihapus.']);
+}
+```
+
+Dengan `index`, `show`, `store`, `update`, dan `destroy` lengkap, `BookController` di folder `Api/` sekarang punya CRUD penuh sesuai lima route yang sudah didaftarkan di Langkah 1.
 
 > 📸 *Screenshot: Postman memanggil `GET /api/books?judul=laskar` dan hanya mengembalikan buku yang judulnya cocok.*
 
@@ -292,7 +385,19 @@ public function show(string $id)
 }
 ```
 
-### Langkah 6 — Endpoint Loans: Store dan Kembalikan
+### Langkah 6 — Endpoint Loans: Index, Store, dan Kembalikan
+
+`index()` menampilkan seluruh transaksi peminjaman dengan tiga relasi sekaligus di-eager load (`member`, `user`, `loanItems.book`) supaya `LoanResource` bisa langsung mengakses `$this->member`, `$this->user`, dan `$this->loanItems` tanpa memicu N+1 Query Problem:
+
+```php
+// File: app/Http/Controllers/Api/LoanController.php
+public function index()
+{
+    $loans = Loan::with(['member', 'user', 'loanItems.book'])->paginate(10);
+
+    return LoanResource::collection($loans);
+}
+```
 
 `Api\LoanController@store` strukturnya mirip `LoanController@store` di web (satu transaksi bisa mencakup banyak buku lewat `book_ids[]`), tapi dengan satu perbedaan penting: karena API ini publik dan tidak berjalan di atas session `auth()`, `user_id` (petugas pencatat) wajib dikirim eksplisit di body request, tidak bisa diisi otomatis dari `auth()->id()` seperti di web:
 
@@ -307,6 +412,14 @@ public function store(Request $request)
         'tanggal_kembali' => 'required|date|after_or_equal:tanggal_pinjam',
         'book_ids' => 'required|array|min:1',
         'book_ids.*' => 'integer|exists:books,id',
+    ], [
+        'member_id.required' => 'Anggota wajib dipilih.',
+        'user_id.required' => 'Petugas (user_id) wajib diisi.',
+        'user_id.exists' => 'Petugas yang dipilih tidak valid.',
+        'tanggal_pinjam.required' => 'Tanggal pinjam wajib diisi.',
+        'tanggal_kembali.required' => 'Tanggal kembali wajib diisi.',
+        'tanggal_kembali.after_or_equal' => 'Tanggal kembali tidak boleh sebelum tanggal pinjam.',
+        'book_ids.required' => 'Pilih minimal satu buku.',
     ]);
 
     $loan = Loan::create([

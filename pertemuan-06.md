@@ -38,7 +38,7 @@ Sebelum menulis laporan, pastikan repository GitHub memenuhi semua syarat beriku
 - [ ] Minimal 5 commit rapi di branch `dev`, mengikuti checkpoint P-1 s.d. P-5 (`[P-1] ...` s.d. `[P-5] ...`)
 - [ ] CRUD `books` berfungsi penuh: create, read (index + show), update, delete — dengan data yang benar-benar tersimpan di database (bukan array/dummy)
 - [ ] CRUD `categories` berfungsi penuh: create, read, update, delete — dengan data nyata
-- [ ] Semua tampilan (`index`, `create`, `edit`, `show` dari kedua resource) memakai master layout (`@extends('layouts.app')`), bukan HTML berdiri sendiri
+- [ ] Halaman `index` (daftar) `books` dan `categories` memakai master layout (`@extends('layouts.app')`) — ini yang jadi praktikum wajib Pertemuan 4, bukan Tugas mandiri
 - [ ] Tidak ada error PHP (halaman *whoops*, 500, atau error validasi yang tidak tertangkap) saat mengakses seluruh halaman `books` dan `categories`
 
 Cara cepat memeriksa daftar commit sebelum mengumpulkan:
@@ -132,12 +132,16 @@ Tugas mandiri CRUD `members` dari Pertemuan 5 **tidak wajib** untuk syarat kelul
 
 ### Rincian Aspek 4 — Master Layout (15%)
 
+Yang jadi praktikum wajib Pertemuan 4 hanya refactor `index.blade.php` kedua resource ke master layout — refactor `create.blade.php` sengaja dijadikan Tugas mandiri P4 (opsional per mahasiswa), dan `edit.blade.php`/`show.blade.php` **tidak pernah diminta** direfactor sama sekali di modul manapun (P4 atau P5). Karena itu rincian poin di bawah membedakan yang wajib dari yang bernilai tambah.
+
 | Indikator | Poin |
 |---|---|
-| Seluruh halaman `books` (index, create, edit, show) memakai `@extends('layouts.app')` | 5 |
-| Seluruh halaman `categories` (index, create, edit) memakai `@extends('layouts.app')` | 5 |
-| Navbar konsisten tampil di semua halaman, termasuk *active state* menu yang benar | 3 |
+| `books/index.blade.php` memakai `@extends('layouts.app')` (wajib) | 4 |
+| `categories/index.blade.php` memakai `@extends('layouts.app')` (wajib) | 4 |
+| Navbar konsisten tampil di halaman `index` kedua resource, termasuk *active state* menu yang benar | 3 |
 | Flash message pakai partial (`partials/alert.blade.php`), bukan ditulis ulang per halaman | 2 |
+| **Nilai tambah** — `books/create.blade.php` dan/atau `categories/create.blade.php` sudah direfactor ke master layout (Tugas mandiri P4) | +1 per file, maks. +2 |
+| **Nilai tambah** — `edit.blade.php`/`show.blade.php` salah satu resource sudah direfactor ke master layout meski tidak pernah diminta | +1 per file, maks. +2 (maks. total tetap 15) |
 
 ### Rincian Aspek 5 — Laporan (15%)
 
@@ -166,6 +170,7 @@ Nilai akhir UTS = jumlah poin yang diperoleh di kelima aspek (total maksimum 100
 - Kalau repository tidak bisa diakses sama sekali (link mati, private tanpa akses) saat batas waktu pengumpulan, Aspek 1–4 (85% dari total) dinilai 0 — laporan tetap dinilai berdasarkan isi tertulisnya di Aspek 5, kecuali laporan juga tidak dikumpulkan.
 - Kolom kategori di `books/index.blade.php` dan `books/show.blade.php` yang menampilkan `category_id` mentah (bukan nama kategori) **bukan kekurangan** untuk UTS ini — relasi Eloquent baru topik Pertemuan 7, jangan dikurangi nilainya di Aspek 2.
 - CRUD `members` memang belum wajib di titik ini (baru Tugas mandiri P5) — jangan dinilai sebagai kekurangan di luar poin bonus Aspek 1.
+- `create.blade.php`, `edit.blade.php`, dan `show.blade.php` yang **masih HTML mandiri** (bukan `@extends('layouts.app')`) **bukan kekurangan** di Aspek 4 — hanya `index.blade.php` kedua resource yang jadi praktikum wajib Pertemuan 4. Refactor `create.blade.php` sengaja jadi Tugas mandiri (boleh belum dikerjakan), dan `edit.blade.php`/`show.blade.php` memang tidak pernah diminta direfactor di modul manapun. Jangan disamakan dengan halaman yang belum pakai master layout karena tidak dikerjakan — periksa dulu apakah itu memang cakupan wajib sebelum mengurangi nilai.
 
 ---
 

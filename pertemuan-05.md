@@ -168,6 +168,18 @@ Schema::create('users', function (Blueprint $table) {
 
 > Kalau migration ini **sudah pernah** dijalankan sebelumnya (ada baris di tabel `migrations`), menambahkan kolom harus lewat migration baru (`php artisan make:migration add_role_to_users_table`) yang memakai `Schema::table()` alih-alih `Schema::create()` — mengedit migration lama yang sudah jalan tidak akan mengubah database yang sudah ada.
 
+Kolom baru di database saja belum cukup — Model `User` juga perlu tahu kolom `role` boleh diisi lewat mass assignment, kalau tidak, `User::create([...'role' => ...])` yang nanti dipakai `UserSeeder` di Pertemuan 8 akan diam-diam mengabaikan field itu. Tambahkan `'role'` ke `$fillable` di `User.php` sekarang juga:
+
+```php
+// File: app/Models/User.php
+protected $fillable = [
+    'name',
+    'email',
+    'password',
+    'role',
+];
+```
+
 ### Langkah 2 — Membuat Migration Lima Tabel Lainnya
 
 Setiap tabel dibuat lewat `make:migration`, dengan urutan pembuatan mengikuti urutan dependency: `categories` dan `books` (yang merujuknya) duluan, baru `members`, `loans`, dan `loan_items`.
@@ -246,7 +258,19 @@ Schema::create('loan_items', function (Blueprint $table) {
 });
 ```
 
-> ⚠️ **Periksa urutan file** di `database/migrations/` sebelum lanjut. Kalau `create_members_table` dan `create_loans_table` (atau pasangan parent-child lainnya) kebetulan punya timestamp identik di nama filenya, ganti salah satu nama file supaya parent (`members`) berada lebih dulu secara alfabetis/timestamp dari child (`loans`) — lihat penjelasan lengkapnya di bagian Materi.
+> ⚠️ **Periksa urutan file** di `database/migrations/` sebelum lanjut — kalau lima perintah `make:migration` di atas dijalankan sekaligus lewat copy-paste, `create_members_table` dan `create_loans_table` berpotensi besar dapat timestamp identik. Buka folder `database/migrations/`, dan kalau nama file `..._create_loans_table.php` muncul **sebelum** `..._create_members_table.php` (padahal `loans` butuh `members` sudah ada duluan), rename salah satunya dengan menambah satu huruf di akhir timestamp supaya urutannya benar:
+>
+> ```
+> # Sebelum (timestamp identik, urutan salah — loans duluan padahal butuh members):
+> 2026_07_16_012108_create_loans_table.php
+> 2026_07_16_012108_create_members_table.php
+>
+> # Sesudah (rename manual, tambahkan huruf "a"/"b" di akhir timestamp):
+> 2026_07_16_012108a_create_members_table.php
+> 2026_07_16_012108b_create_loans_table.php
+> ```
+>
+> Laravel mengurutkan migration murni dari nama file secara alfabetis, jadi menambah huruf di akhir angka timestamp itu valid dan tidak merusak apa pun — cukup rename filenya (klik kanan → rename di file explorer, atau `mv` di terminal), isi filenya tidak perlu diubah. Lihat penjelasan lengkap kenapa ini bisa terjadi di bagian Materi.
 
 Jalankan migration, lalu verifikasi semua tabel terbuat tanpa error:
 
@@ -284,6 +308,37 @@ class Book extends Model
         'judul', 'penulis', 'penerbit', 'tahun_terbit',
         'isbn', 'stok', 'category_id', 'sampul',
     ];
+}
+```
+
+`Member`, `Loan`, dan `LoanItem` belum dipakai di CRUD pertemuan ini (baru jadi Tugas mandiri atau masuk Pertemuan 7), tapi tetap isi `$fillable`-nya sekarang juga supaya kelima Model sudah siap dipakai kapan saja dibutuhkan:
+
+```php
+// File: app/Models/Member.php
+class Member extends Model
+{
+    protected $fillable = [
+        'nama', 'nim', 'email', 'nomor_telepon', 'alamat', 'status',
+    ];
+}
+```
+
+```php
+// File: app/Models/Loan.php
+class Loan extends Model
+{
+    protected $fillable = [
+        'member_id', 'user_id', 'tanggal_pinjam',
+        'tanggal_kembali', 'tanggal_dikembalikan', 'status',
+    ];
+}
+```
+
+```php
+// File: app/Models/LoanItem.php
+class LoanItem extends Model
+{
+    protected $fillable = ['loan_id', 'book_id'];
 }
 ```
 
@@ -346,25 +401,54 @@ public function destroy(string $id)
 }
 ```
 
-Karena Eloquent Model mengimplementasikan `ArrayAccess`, sintaks `$category['nama_kategori']` yang sudah dipakai di `categories/index.blade.php` dan `categories/create.blade.php` sejak Pertemuan 3-4 **tetap berfungsi tanpa perlu diubah** — meski sekarang `$category` adalah instance Model, bukan array asosiatif lagi. Yang perlu ditambahkan hanya `categories/edit.blade.php` (belum pernah dibuat sebelumnya karena `edit()` masih stub) dan satu baris `{{ $categories->links() }}` di `categories/index.blade.php` untuk menampilkan navigasi pagination.
+Karena Eloquent Model mengimplementasikan `ArrayAccess`, sintaks `$category['nama_kategori']` yang sudah dipakai di `categories/index.blade.php` dan `categories/create.blade.php` sejak Pertemuan 3-4 **tetap berfungsi tanpa perlu diubah** — meski sekarang `$category` adalah instance Model, bukan array asosiatif lagi. Yang perlu ditambahkan hanya `categories/edit.blade.php` (belum pernah dibuat sebelumnya karena `edit()` masih stub) dan satu baris `{{ $categories->links() }}` di `categories/index.blade.php` untuk menampilkan navigasi pagination — **hapus** paragraf catatan lama ("data di atas masih data dummy...") di bagian bawah tabel, ganti persis dengan baris `links()` ini:
+
+```blade
+{{-- File: resources/views/categories/index.blade.php (ganti paragraf "Catatan: data dummy..." di akhir file dengan ini) --}}
+{{ $categories->links() }}
+```
+
+File ini baru, belum pernah ada sebelumnya — tulis lengkap dari nol, ikuti struktur `categories/create.blade.php` yang sudah ada sejak Pertemuan 3:
 
 ```blade
 {{-- File: resources/views/categories/edit.blade.php --}}
-<form action="{{ route('categories.update', $category['id']) }}" method="POST">
-    @csrf
-    @method('PUT')
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Kategori</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; max-width: 500px; }
+        label { display: block; margin-top: 12px; font-weight: bold; }
+        input, textarea { width: 100%; padding: 6px; margin-top: 4px; box-sizing: border-box; }
+        .error { color: #b91c1c; font-size: 14px; margin-top: 4px; }
+        .btn { margin-top: 20px; padding: 8px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Edit Kategori</h1>
+    <p><a href="{{ route('categories.index') }}">&larr; Kembali ke daftar kategori</a></p>
 
-    <label for="nama_kategori">Nama Kategori</label>
-    <input type="text" name="nama_kategori" id="nama_kategori" value="{{ old('nama_kategori', $category['nama_kategori']) }}">
-    @error('nama_kategori')
-        <div class="error">{{ $message }}</div>
-    @enderror
+    <form action="{{ route('categories.update', $category['id']) }}" method="POST">
+        @csrf
+        @method('PUT')
 
-    <label for="deskripsi">Deskripsi (opsional)</label>
-    <textarea name="deskripsi" id="deskripsi" rows="4">{{ old('deskripsi', $category['deskripsi']) }}</textarea>
+        <label for="nama_kategori">Nama Kategori</label>
+        <input type="text" name="nama_kategori" id="nama_kategori" value="{{ old('nama_kategori', $category['nama_kategori']) }}">
+        @error('nama_kategori')
+            <div class="error">{{ $message }}</div>
+        @enderror
 
-    <button type="submit" class="btn">Perbarui</button>
-</form>
+        <label for="deskripsi">Deskripsi (opsional)</label>
+        <textarea name="deskripsi" id="deskripsi" rows="4">{{ old('deskripsi', $category['deskripsi']) }}</textarea>
+        @error('deskripsi')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <button type="submit" class="btn">Perbarui</button>
+    </form>
+</body>
+</html>
 ```
 
 > 📸 *Screenshot: halaman `/categories` menampilkan data kategori yang benar-benar tersimpan di database, lengkap dengan navigasi pagination di bagian bawah tabel.*
@@ -447,15 +531,46 @@ public function destroy(string $id)
 }
 ```
 
-Aturan `exists:categories,id` ditambahkan di validasi `category_id` (baik di `StoreBookRequest` maupun validasi inline `update()`) supaya form tidak bisa menyimpan buku dengan `category_id` yang sebenarnya tidak ada di tabel `categories` — kegagalan yang kalau tidak divalidasi di awal baru akan ketahuan lewat error database yang membingungkan.
+Aturan `exists:categories,id` ditambahkan di validasi `category_id`, baik di validasi inline `update()` di atas maupun di `StoreBookRequest` yang dipakai `store()` — supaya form tidak bisa menyimpan buku dengan `category_id` yang sebenarnya tidak ada di tabel `categories`. Buka `StoreBookRequest` yang sudah dibuat sejak Pertemuan 3, lalu ubah satu baris aturan `category_id`-nya:
 
-Karena Model Book belum punya relasi `category()` (baru dipelajari Pertemuan 7), kolom kategori di `books/index.blade.php` dan `books/show.blade.php` untuk sementara menampilkan **`category_id` mentah**, bukan nama kategorinya:
+```php
+// File: app/Http/Requests/StoreBookRequest.php (di method rules())
+'category_id' => 'required|integer|exists:categories,id', // sebelumnya: 'required|integer'
+```
+
+Tambahkan juga pesan error kustomnya di method `messages()`:
+
+```php
+// File: app/Http/Requests/StoreBookRequest.php (di method messages())
+'category_id.exists' => 'Kategori yang dipilih tidak valid.',
+```
+
+Karena Model Book belum punya relasi `category()` (baru dipelajari Pertemuan 7), kolom kategori di `books/index.blade.php` dan `books/show.blade.php` untuk sementara menampilkan **`category_id` mentah**, bukan nama kategorinya. Ubah `books/index.blade.php`, ganti kolom "Kategori" jadi "ID Kategori", dan tambahkan satu baris pagination di akhir tabel (persis pola yang sama seperti `categories/index.blade.php` sebelumnya):
 
 ```blade
 {{-- File: resources/views/books/index.blade.php (potongan) --}}
 <th>ID Kategori</th>
 ...
 <td>{{ $book['category_id'] }}</td>
+```
+
+Di bagian bawah file, **hapus** paragraf catatan lama ("data di atas masih data dummy..."), ganti dengan baris pagination dan catatan baru yang sesuai kondisi sekarang:
+
+```blade
+{{-- File: resources/views/books/index.blade.php (ganti paragraf "Catatan: data dummy..." di akhir file dengan ini) --}}
+{{ $books->links() }}
+
+<p><em>Catatan: kolom kategori masih menampilkan ID. Menampilkan nama kategori memerlukan Eloquent Relationship, dipelajari di Pertemuan 7.</em></p>
+```
+
+Lakukan perubahan yang sama di `books/show.blade.php` — baris "Kategori" diganti jadi "ID Kategori":
+
+```blade
+{{-- File: resources/views/books/show.blade.php (potongan) --}}
+<tr>
+    <th>ID Kategori</th>
+    <td>{{ $book['category_id'] }}</td>
+</tr>
 ```
 
 > 📸 *Screenshot: halaman `/books` menampilkan data buku nyata dari database, kolom "ID Kategori" berisi angka (bukan nama), dan navigasi pagination di bawah tabel.*

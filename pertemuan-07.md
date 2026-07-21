@@ -137,18 +137,75 @@ Ini berguna kalau relasi yang dimuat berpotensi sangat banyak dan hanya sebagian
 
 CRUD `members` (Tugas mandiri Pertemuan 5) ternyata jadi prasyarat wajib pertemuan ini — form tambah peminjaman butuh dropdown anggota nyata, dan salah satu output praktikum ini adalah halaman detail anggota yang menampilkan riwayat peminjamannya. Kalau kamu belum sempat menyelesaikan tugas itu, kerjakan dulu bagian ini sebelum lanjut ke relasi.
 
-`MemberController` diubah dari array dummy ke Eloquent penuh, mengikuti pola persis `CategoryController` di Pertemuan 5:
+`MemberController` diubah dari array dummy ke Eloquent penuh, mengikuti pola persis `CategoryController` di Pertemuan 5. Validasi saat membuat anggota baru memakai Form Request tersendiri:
+
+```php
+// File: app/Http/Requests/StoreMemberRequest.php
+<?php
+
+namespace App\Http\Requests;
+
+use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Foundation\Http\FormRequest;
+
+class StoreMemberRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    /**
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        return [
+            'nama' => 'required|string|max:100',
+            'nim' => 'required|string|max:20|unique:members,nim',
+            'email' => 'required|email|max:100|unique:members,email',
+            'nomor_telepon' => 'required|string|max:15',
+            'alamat' => 'required|string',
+            'status' => 'required|in:aktif,nonaktif',
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'nama.required' => 'Nama anggota wajib diisi.',
+            'nim.required' => 'NIM wajib diisi.',
+            'nim.unique' => 'NIM sudah terdaftar.',
+            'email.required' => 'Email wajib diisi.',
+            'email.email' => 'Format email tidak valid.',
+            'email.unique' => 'Email sudah terdaftar.',
+            'nomor_telepon.required' => 'Nomor telepon wajib diisi.',
+            'alamat.required' => 'Alamat wajib diisi.',
+            'status.required' => 'Status wajib dipilih.',
+            'status.in' => 'Status tidak valid.',
+        ];
+    }
+}
+```
+
+Dibuat lewat `php artisan make:request StoreMemberRequest`, lalu isi seperti di atas. Setelah itu, seluruh method `MemberController` diisi — `index`/`store` memakai pola yang sama seperti `CategoryController`, sedangkan `edit`/`update`/`destroy` memakai `findOrFail()` seperti biasa (method `show` sengaja dibahas terpisah di Langkah 4, karena di situ baru masuk eager loading relasi `loans`):
 
 ```php
 // File: app/Http/Controllers/MemberController.php
 use App\Http\Requests\StoreMemberRequest;
 use App\Models\Member;
+use Illuminate\Http\Request;
 
 public function index()
 {
     $members = Member::paginate(10);
 
     return view('members.index', compact('members'));
+}
+
+public function create()
+{
+    return view('members.create');
 }
 
 public function store(StoreMemberRequest $request)
@@ -160,9 +217,241 @@ public function store(StoreMemberRequest $request)
     return redirect()->route('members.index')
         ->with('success', "Anggota \"{$validated['nama']}\" berhasil ditambahkan.");
 }
+
+public function edit(string $id)
+{
+    $member = Member::findOrFail($id);
+
+    return view('members.edit', compact('member'));
+}
+
+public function update(Request $request, string $id)
+{
+    $member = Member::findOrFail($id);
+
+    $validated = $request->validate([
+        'nama' => 'required|string|max:100',
+        'nim' => 'required|string|max:20|unique:members,nim,'.$member->id,
+        'email' => 'required|email|max:100|unique:members,email,'.$member->id,
+        'nomor_telepon' => 'required|string|max:15',
+        'alamat' => 'required|string',
+        'status' => 'required|in:aktif,nonaktif',
+    ]);
+
+    $member->update($validated);
+
+    return redirect()->route('members.index')
+        ->with('success', "Anggota \"{$validated['nama']}\" berhasil diperbarui.");
+}
+
+public function destroy(string $id)
+{
+    $member = Member::findOrFail($id);
+    $member->delete();
+
+    return redirect()->route('members.index')
+        ->with('success', 'Anggota berhasil dihapus.');
+}
 ```
 
-`StoreMemberRequest` dibuat lewat `php artisan make:request StoreMemberRequest` dengan validasi `nama` wajib, `nim` wajib dan unik, `email` wajib format email dan unik, `nomor_telepon` wajib, `alamat` wajib, `status` wajib salah satu dari `aktif`/`nonaktif`. Method `edit`, `update`, dan `destroy` mengikuti pola `findOrFail()` yang sama seperti `CategoryController`, dan tiga view baru (`create.blade.php`, `edit.blade.php`, `show.blade.php`) dibuat mengikuti struktur form yang sama seperti `books/create.blade.php`/`edit.blade.php`.
+`nim`/`email` di `update()` menambahkan `,'.$member->id` di akhir aturan `unique` — supaya validasi tidak menolak anggota itu sendiri saat NIM/email-nya tidak berubah (Laravel `unique` perlu tahu baris mana yang boleh dikecualikan saat sedang mengedit baris itu sendiri).
+
+View-nya dibuat dengan struktur halaman lengkap yang sama seperti `books/create.blade.php`/`edit.blade.php` (HTML polos, bukan master layout — cuma isi field yang disesuaikan ke kolom `members`):
+
+```blade
+{{-- File: resources/views/members/create.blade.php --}}
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Tambah Anggota</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; max-width: 500px; }
+        label { display: block; margin-top: 12px; font-weight: bold; }
+        input, select, textarea { width: 100%; padding: 6px; margin-top: 4px; box-sizing: border-box; }
+        .error { color: #b91c1c; font-size: 14px; margin-top: 4px; }
+        .btn { margin-top: 20px; padding: 8px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Tambah Anggota</h1>
+    <p><a href="{{ route('members.index') }}">&larr; Kembali ke daftar anggota</a></p>
+
+    <form action="{{ route('members.store') }}" method="POST">
+        @csrf
+
+        <label for="nama">Nama</label>
+        <input type="text" name="nama" id="nama" value="{{ old('nama') }}">
+        @error('nama')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="nim">NIM</label>
+        <input type="text" name="nim" id="nim" value="{{ old('nim') }}">
+        @error('nim')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="email">Email</label>
+        <input type="email" name="email" id="email" value="{{ old('email') }}">
+        @error('email')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="nomor_telepon">Nomor Telepon</label>
+        <input type="text" name="nomor_telepon" id="nomor_telepon" value="{{ old('nomor_telepon') }}">
+        @error('nomor_telepon')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="alamat">Alamat</label>
+        <textarea name="alamat" id="alamat" rows="3">{{ old('alamat') }}</textarea>
+        @error('alamat')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="status">Status</label>
+        <select name="status" id="status">
+            <option value="aktif" @selected(old('status', 'aktif') == 'aktif')>Aktif</option>
+            <option value="nonaktif" @selected(old('status') == 'nonaktif')>Nonaktif</option>
+        </select>
+        @error('status')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <button type="submit" class="btn">Simpan</button>
+    </form>
+</body>
+</html>
+```
+
+`edit.blade.php` sama persis strukturnya, cuma judul, `action` diarahkan ke `members.update`, ditambah `@method('PUT')`, dan tiap `value`/isi field memakai `old('field', $member['field'])` supaya ter-prefill data lama:
+
+```blade
+{{-- File: resources/views/members/edit.blade.php --}}
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Anggota</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; max-width: 500px; }
+        label { display: block; margin-top: 12px; font-weight: bold; }
+        input, select, textarea { width: 100%; padding: 6px; margin-top: 4px; box-sizing: border-box; }
+        .error { color: #b91c1c; font-size: 14px; margin-top: 4px; }
+        .btn { margin-top: 20px; padding: 8px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Edit Anggota</h1>
+    <p><a href="{{ route('members.index') }}">&larr; Kembali ke daftar anggota</a></p>
+
+    <form action="{{ route('members.update', $member['id']) }}" method="POST">
+        @csrf
+        @method('PUT')
+
+        <label for="nama">Nama</label>
+        <input type="text" name="nama" id="nama" value="{{ old('nama', $member['nama']) }}">
+        @error('nama')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="nim">NIM</label>
+        <input type="text" name="nim" id="nim" value="{{ old('nim', $member['nim']) }}">
+        @error('nim')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="email">Email</label>
+        <input type="email" name="email" id="email" value="{{ old('email', $member['email']) }}">
+        @error('email')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="nomor_telepon">Nomor Telepon</label>
+        <input type="text" name="nomor_telepon" id="nomor_telepon" value="{{ old('nomor_telepon', $member['nomor_telepon']) }}">
+        @error('nomor_telepon')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="alamat">Alamat</label>
+        <textarea name="alamat" id="alamat" rows="3">{{ old('alamat', $member['alamat']) }}</textarea>
+        @error('alamat')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="status">Status</label>
+        <select name="status" id="status">
+            <option value="aktif" @selected(old('status', $member['status']) == 'aktif')>Aktif</option>
+            <option value="nonaktif" @selected(old('status', $member['status']) == 'nonaktif')>Nonaktif</option>
+        </select>
+        @error('status')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <button type="submit" class="btn">Perbarui</button>
+    </form>
+</body>
+</html>
+```
+
+Terakhir, `members/index.blade.php` yang sebelumnya cuma menampilkan data dummy tanpa aksi apa pun, diperbarui supaya benar-benar bisa dipakai untuk masuk ke `create`/`show`/`edit`/`destroy` — tanpa langkah ini, mahasiswa tidak akan punya cara mengklik ke halaman-halaman yang baru dibuat:
+
+```blade
+{{-- File: resources/views/members/index.blade.php --}}
+@extends('layouts.app')
+
+@section('title', 'Daftar Anggota')
+
+@section('content')
+    <h1>Daftar Anggota</h1>
+
+    <p><a href="{{ route('members.create') }}" class="btn">+ Tambah Anggota</a></p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nama</th>
+                <th>NIM</th>
+                <th>Email</th>
+                <th>No. Telepon</th>
+                <th>Status</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse ($members as $member)
+                <tr>
+                    <td>{{ $member['id'] }}</td>
+                    <td>{{ $member['nama'] }}</td>
+                    <td>{{ $member['nim'] }}</td>
+                    <td>{{ $member['email'] }}</td>
+                    <td>{{ $member['nomor_telepon'] }}</td>
+                    <td>{{ ucfirst($member['status']) }}</td>
+                    <td>
+                        <a href="{{ route('members.show', $member['id']) }}">Detail</a>
+                        |
+                        <a href="{{ route('members.edit', $member['id']) }}">Edit</a>
+                        |
+                        <form class="inline" action="{{ route('members.destroy', $member['id']) }}" method="POST">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit">Hapus</button>
+                        </form>
+                    </td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="7">Belum ada data anggota.</td>
+                </tr>
+            @endforelse
+        </tbody>
+    </table>
+
+    {{ $members->links() }}
+@endsection
+```
 
 > Fitur **search nama anggota** yang juga disebut di Tugas Pertemuan 5 tetap belum dikerjakan di langkah ini — itu tetap jadi tugas mandiri terpisah, tidak menghalangi praktikum relasi di pertemuan ini.
 
@@ -268,13 +557,15 @@ use Illuminate\Support\Facades\DB;
 DB::enableQueryLog();
 $books = App\Models\Book::all();
 foreach ($books as $book) { $nama = $book->category->nama_kategori; }
-echo count(DB::getQueryLog());   // tanpa eager loading
+echo 'Tanpa eager loading: '.count(DB::getQueryLog()).' query'.PHP_EOL;
 
 DB::flushQueryLog();
 $books2 = App\Models\Book::with('category')->get();
 foreach ($books2 as $book) { $nama = $book->category->nama_kategori; }
-echo count(DB::getQueryLog());   // dengan eager loading
+echo 'Dengan eager loading: '.count(DB::getQueryLog()).' query'.PHP_EOL;
 ```
+
+> Tambahkan `.PHP_EOL` dan label teks seperti di atas — kalau cuma `echo count(...)` dipanggil dua kali berturut-turut, hasilnya nempel jadi satu angka (mis. "32") di terminal tanpa pemisah baris, membingungkan dibaca padahal sebenarnya dua angka terpisah (3 lalu 2).
 
 Dengan 2 baris data buku, hasil sebenarnya dari percobaan ini adalah **3 query** tanpa eager loading (1 untuk buku + 2 untuk kategori masing-masing baris) berbanding **2 query** dengan eager loading (1 untuk buku + 1 untuk seluruh kategori sekaligus) — selisihnya makin lebar seiring makin banyak baris buku yang ada, karena angka "tanpa eager loading" bertambah linear mengikuti jumlah baris, sedangkan angka "dengan eager loading" tetap konstan.
 
@@ -301,12 +592,29 @@ public function show(string $id)
 }
 ```
 
-Kolom "ID Kategori" di `books/index.blade.php` dan "ID Kategori" di `books/show.blade.php` diganti jadi "Kategori", mengakses nama aslinya lewat relasi:
+Kolom "ID Kategori" di `books/index.blade.php` dan "ID Kategori" di `books/show.blade.php` diganti jadi "Kategori" — baik teks header (`<th>`) maupun cara mengambil datanya, mengakses nama aslinya lewat relasi:
 
 ```blade
 {{-- File: resources/views/books/index.blade.php --}}
-<td>{{ $book['category']['nama_kategori'] }}</td>
+<th>Kategori</th>  {{-- sebelumnya: <th>ID Kategori</th> --}}
 ```
+
+```blade
+{{-- File: resources/views/books/index.blade.php --}}
+<td>{{ $book['category']['nama_kategori'] }}</td>  {{-- sebelumnya: {{ $book['category_id'] }} --}}
+```
+
+Baris paling bawah tabel info juga ikut berubah polanya sama di `books/show.blade.php` (halaman ini masih HTML polos tanpa master layout, jadi strukturnya tabel dua kolom `<th>`/`<td>`, bukan tabel daftar seperti index):
+
+```blade
+{{-- File: resources/views/books/show.blade.php --}}
+<tr>
+    <th>Kategori</th>  {{-- sebelumnya: <th>ID Kategori</th> --}}
+    <td>{{ $book['category']['nama_kategori'] }}</td>  {{-- sebelumnya: {{ $book['category_id'] }} --}}
+</tr>
+```
+
+Baris catatan "kolom kategori masih menampilkan ID, dipelajari di Pertemuan 7" yang sebelumnya ada di bawah tabel `books/index.blade.php` juga dihapus — sudah tidak relevan sejak langkah ini.
 
 > 📸 *Screenshot: halaman `/books` menampilkan nama kategori ("Novel", "Komik", dst) di kolom kategori, bukan lagi angka ID.*
 
@@ -324,25 +632,88 @@ public function show(string $id)
 }
 ```
 
-View `members/show.blade.php` menampilkan data anggota seperti biasa, ditambah tabel riwayat peminjaman yang di-loop dari `$member['loans']`:
+View `members/show.blade.php` (halaman baru, belum ada sebelum langkah ini) menampilkan data anggota di tabel info seperti pola `books/show.blade.php`, ditambah tabel riwayat peminjaman yang di-loop dari `$member['loans']`:
 
 ```blade
 {{-- File: resources/views/members/show.blade.php --}}
-@forelse ($member['loans'] as $loan)
-    <tr>
-        <td>{{ $loan['tanggal_pinjam'] }}</td>
-        <td>{{ $loan['tanggal_kembali'] }}</td>
-        <td>{{ $loan['user']['name'] }}</td>
-        <td>
-            @foreach ($loan['loanItems'] as $item)
-                {{ $item['book']['judul'] }}@if (!$loop->last), @endif
-            @endforeach
-        </td>
-        <td>{{ ucfirst($loan['status']) }}</td>
-    </tr>
-@empty
-    <tr><td colspan="5">Anggota ini belum pernah meminjam buku.</td></tr>
-@endforelse
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Detail Anggota</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; max-width: 700px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+        th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
+        .info th { width: 160px; background: #f3f4f6; }
+    </style>
+</head>
+<body>
+    <h1>Detail Anggota</h1>
+    <p><a href="{{ route('members.index') }}">&larr; Kembali ke daftar anggota</a></p>
+
+    <table class="info">
+        <tr>
+            <th>Nama</th>
+            <td>{{ $member['nama'] }}</td>
+        </tr>
+        <tr>
+            <th>NIM</th>
+            <td>{{ $member['nim'] }}</td>
+        </tr>
+        <tr>
+            <th>Email</th>
+            <td>{{ $member['email'] }}</td>
+        </tr>
+        <tr>
+            <th>Nomor Telepon</th>
+            <td>{{ $member['nomor_telepon'] }}</td>
+        </tr>
+        <tr>
+            <th>Alamat</th>
+            <td>{{ $member['alamat'] }}</td>
+        </tr>
+        <tr>
+            <th>Status</th>
+            <td>{{ ucfirst($member['status']) }}</td>
+        </tr>
+    </table>
+
+    <h2>Riwayat Peminjaman</h2>
+    <p><em>Diambil lewat relasi <code>$member->loans</code> — satu anggota bisa punya banyak transaksi peminjaman.</em></p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Tanggal Pinjam</th>
+                <th>Tanggal Kembali</th>
+                <th>Petugas</th>
+                <th>Buku</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse ($member['loans'] as $loan)
+                <tr>
+                    <td>{{ $loan['tanggal_pinjam'] }}</td>
+                    <td>{{ $loan['tanggal_kembali'] }}</td>
+                    <td>{{ $loan['user']['name'] }}</td>
+                    <td>
+                        @foreach ($loan['loanItems'] as $item)
+                            {{ $item['book']['judul'] }}@if (!$loop->last), @endif
+                        @endforeach
+                    </td>
+                    <td>{{ ucfirst($loan['status']) }}</td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="5">Anggota ini belum pernah meminjam buku.</td>
+                </tr>
+            @endforelse
+        </tbody>
+    </table>
+</body>
+</html>
 ```
 
 > 📸 *Screenshot: halaman `/members/{id}` menampilkan data anggota lengkap dengan tabel riwayat peminjaman di bawahnya.*
@@ -384,6 +755,109 @@ public function store(Request $request)
 
 `user_id` (petugas yang mencatat transaksi) untuk sementara dipilih manual lewat dropdown di form, karena Autentikasi baru masuk Pertemuan 8 — belum ada `auth()->id()` yang bisa dipakai otomatis. Ini akan disederhanakan begitu login tersedia.
 
+Sebelum `store()` bisa dipakai, form-nya perlu data anggota, buku, dan petugas untuk mengisi dropdown/checkbox — ini tugas `create()`, yang **wajib dibuat lebih dulu** sebelum `/loans/create` bisa diakses sama sekali (tanpa method ini, view akan error karena variabel `$members`/`$books`/`$users` belum dikirim):
+
+```php
+// File: app/Http/Controllers/LoanController.php
+public function create()
+{
+    $members = Member::all();
+    $books = Book::all();
+    $users = User::all();
+
+    return view('loans.create', compact('members', 'books', 'users'));
+}
+```
+
+`use App\Models\Book;`, `use App\Models\Member;`, dan `use App\Models\User;` ditambahkan di bagian atas `LoanController.php` untuk mendukung `create()` di atas.
+
+Form create (`loans/create.blade.php`) menyediakan dropdown anggota dan petugas, input tanggal, serta daftar checkbox buku (`name="book_ids[]"`) supaya satu peminjaman bisa mencakup lebih dari satu buku sekaligus:
+
+```blade
+{{-- File: resources/views/loans/create.blade.php --}}
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Tambah Peminjaman</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; max-width: 500px; }
+        label { display: block; margin-top: 12px; font-weight: bold; }
+        input, select { width: 100%; padding: 6px; margin-top: 4px; box-sizing: border-box; }
+        .checkbox-list { border: 1px solid #ccc; border-radius: 4px; padding: 10px; margin-top: 4px; max-height: 200px; overflow-y: auto; }
+        .checkbox-list label { display: block; font-weight: normal; margin-top: 0; }
+        .error { color: #b91c1c; font-size: 14px; margin-top: 4px; }
+        .btn { margin-top: 20px; padding: 8px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Tambah Peminjaman</h1>
+    <p><a href="{{ route('loans.index') }}">&larr; Kembali ke daftar peminjaman</a></p>
+
+    <form action="{{ route('loans.store') }}" method="POST">
+        @csrf
+
+        <label for="member_id">Anggota</label>
+        <select name="member_id" id="member_id">
+            <option value="">-- Pilih Anggota --</option>
+            @foreach ($members as $member)
+                <option value="{{ $member['id'] }}" @selected(old('member_id') == $member['id'])>
+                    {{ $member['nama'] }} ({{ $member['nim'] }})
+                </option>
+            @endforeach
+        </select>
+        @error('member_id')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="user_id">Petugas</label>
+        <select name="user_id" id="user_id">
+            <option value="">-- Pilih Petugas --</option>
+            @foreach ($users as $user)
+                <option value="{{ $user['id'] }}" @selected(old('user_id') == $user['id'])>
+                    {{ $user['name'] }}
+                </option>
+            @endforeach
+        </select>
+        @error('user_id')
+            <div class="error">{{ $message }}</div>
+        @enderror
+        <p><em>Catatan: dropdown petugas dipilih manual karena login belum ada — otomatis dari user yang login mulai Pertemuan 8.</em></p>
+
+        <label for="tanggal_pinjam">Tanggal Pinjam</label>
+        <input type="date" name="tanggal_pinjam" id="tanggal_pinjam" value="{{ old('tanggal_pinjam') }}">
+        @error('tanggal_pinjam')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="tanggal_kembali">Tanggal Kembali</label>
+        <input type="date" name="tanggal_kembali" id="tanggal_kembali" value="{{ old('tanggal_kembali') }}">
+        @error('tanggal_kembali')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label>Buku yang Dipinjam</label>
+        <div class="checkbox-list">
+            @forelse ($books as $book)
+                <label>
+                    <input type="checkbox" name="book_ids[]" value="{{ $book['id'] }}"
+                        @checked(in_array($book['id'], old('book_ids', [])))>
+                    {{ $book['judul'] }} (stok: {{ $book['stok'] }})
+                </label>
+            @empty
+                <p>Belum ada data buku.</p>
+            @endforelse
+        </div>
+        @error('book_ids')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <button type="submit" class="btn">Simpan</button>
+    </form>
+</body>
+</html>
+```
+
 `index()` dan `show()` memuat ketiga relasi sekaligus supaya tidak terjadi N+1 saat menampilkan daftar maupun detail peminjaman:
 
 ```php
@@ -394,26 +868,176 @@ public function index()
 
     return view('loans.index', compact('loans'));
 }
+
+public function show(string $id)
+{
+    $loan = Loan::with(['member', 'user', 'loanItems.book'])->findOrFail($id);
+
+    return view('loans.show', compact('loan'));
+}
 ```
 
-Form create (`loans/create.blade.php`) menyediakan dropdown anggota dan petugas, input tanggal, serta daftar checkbox buku (`name="book_ids[]"`) supaya satu peminjaman bisa mencakup lebih dari satu buku sekaligus:
+`loans/index.blade.php` pakai master layout seperti `books/index.blade.php`, menampilkan nama anggota/petugas/buku lewat relasi (bukan ID), dan daftar judul buku digabung koma kalau lebih dari satu lewat `$loop->last`:
 
 ```blade
-{{-- File: resources/views/loans/create.blade.php --}}
-<div class="checkbox-list">
-    @foreach ($books as $book)
-        <label>
-            <input type="checkbox" name="book_ids[]" value="{{ $book['id'] }}">
-            {{ $book['judul'] }} (stok: {{ $book['stok'] }})
-        </label>
-    @endforeach
-</div>
+{{-- File: resources/views/loans/index.blade.php --}}
+@extends('layouts.app')
+
+@section('title', 'Daftar Peminjaman')
+
+@section('content')
+    <h1>Daftar Peminjaman</h1>
+
+    <p><a href="{{ route('loans.create') }}" class="btn">+ Tambah Peminjaman</a></p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Anggota</th>
+                <th>Petugas</th>
+                <th>Buku</th>
+                <th>Tgl Pinjam</th>
+                <th>Tgl Kembali</th>
+                <th>Status</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse ($loans as $loan)
+                <tr>
+                    <td>{{ $loan['id'] }}</td>
+                    <td>{{ $loan['member']['nama'] }}</td>
+                    <td>{{ $loan['user']['name'] }}</td>
+                    <td>
+                        @foreach ($loan['loanItems'] as $item)
+                            {{ $item['book']['judul'] }}@if (!$loop->last), @endif
+                        @endforeach
+                    </td>
+                    <td>{{ $loan['tanggal_pinjam'] }}</td>
+                    <td>{{ $loan['tanggal_kembali'] }}</td>
+                    <td>{{ ucfirst($loan['status']) }}</td>
+                    <td>
+                        <a href="{{ route('loans.show', $loan['id']) }}">Detail</a>
+                        |
+                        <a href="{{ route('loans.edit', $loan['id']) }}">Edit</a>
+                        |
+                        <form class="inline" action="{{ route('loans.destroy', $loan['id']) }}" method="POST">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit">Hapus</button>
+                        </form>
+                    </td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="8">Belum ada data peminjaman.</td>
+                </tr>
+            @endforelse
+        </tbody>
+    </table>
+
+    {{ $loans->links() }}
+@endsection
 ```
 
-Method `edit`/`update`/`destroy` melengkapi CRUD standar (mengubah tanggal kembali & status, dan menghapus transaksi). Karena `loan_items` terhubung ke `loans` tanpa `cascadeOnDelete()` di migration-nya, item-nya harus dihapus lebih dulu secara eksplisit sebelum baris `loans` induknya dihapus, kalau tidak MySQL akan menolak lewat error foreign key constraint:
+`loans/show.blade.php` (halaman baru) menampilkan detail satu transaksi beserta seluruh buku yang dipinjam di transaksi itu:
+
+```blade
+{{-- File: resources/views/loans/show.blade.php --}}
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Detail Peminjaman</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; max-width: 600px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+        th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
+        .info th { width: 160px; background: #f3f4f6; }
+    </style>
+</head>
+<body>
+    <h1>Detail Peminjaman</h1>
+    <p><a href="{{ route('loans.index') }}">&larr; Kembali ke daftar peminjaman</a></p>
+
+    <table class="info">
+        <tr>
+            <th>Anggota</th>
+            <td>{{ $loan['member']['nama'] }} ({{ $loan['member']['nim'] }})</td>
+        </tr>
+        <tr>
+            <th>Petugas</th>
+            <td>{{ $loan['user']['name'] }}</td>
+        </tr>
+        <tr>
+            <th>Tanggal Pinjam</th>
+            <td>{{ $loan['tanggal_pinjam'] }}</td>
+        </tr>
+        <tr>
+            <th>Tanggal Kembali</th>
+            <td>{{ $loan['tanggal_kembali'] }}</td>
+        </tr>
+        <tr>
+            <th>Tanggal Dikembalikan</th>
+            <td>{{ $loan['tanggal_dikembalikan'] ?? '-' }}</td>
+        </tr>
+        <tr>
+            <th>Status</th>
+            <td>{{ ucfirst($loan['status']) }}</td>
+        </tr>
+    </table>
+
+    <h2>Buku yang Dipinjam</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Judul</th>
+                <th>Penulis</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach ($loan['loanItems'] as $item)
+                <tr>
+                    <td>{{ $item['book']['judul'] }}</td>
+                    <td>{{ $item['book']['penulis'] }}</td>
+                </tr>
+            @endforeach
+        </tbody>
+    </table>
+</body>
+</html>
+```
+
+Method `edit`/`update`/`destroy` melengkapi CRUD standar. `edit()` sengaja **tidak** mengizinkan mengganti anggota atau buku yang dipinjam — cuma tanggal kembali dan status yang bisa diubah, karena mengubah anggota/buku di tengah transaksi yang sudah berjalan lebih berisiko menimbulkan data tidak konsisten daripada bermanfaat untuk kasus penggunaan aplikasi ini:
 
 ```php
 // File: app/Http/Controllers/LoanController.php
+public function edit(string $id)
+{
+    $loan = Loan::with(['member', 'user', 'loanItems.book'])->findOrFail($id);
+
+    return view('loans.edit', compact('loan'));
+}
+
+public function update(Request $request, string $id)
+{
+    $loan = Loan::findOrFail($id);
+
+    $validated = $request->validate([
+        'tanggal_kembali' => 'required|date|after_or_equal:tanggal_pinjam',
+        'status' => 'required|in:dipinjam,dikembalikan,terlambat',
+    ], [
+        'tanggal_kembali.required' => 'Tanggal kembali wajib diisi.',
+        'tanggal_kembali.after_or_equal' => 'Tanggal kembali tidak boleh sebelum tanggal pinjam.',
+    ]);
+
+    $loan->update($validated);
+
+    return redirect()->route('loans.index')
+        ->with('success', 'Transaksi peminjaman berhasil diperbarui.');
+}
+
 public function destroy(string $id)
 {
     $loan = Loan::findOrFail($id);
@@ -423,6 +1047,67 @@ public function destroy(string $id)
     return redirect()->route('loans.index')
         ->with('success', 'Transaksi peminjaman berhasil dihapus.');
 }
+```
+
+Karena `loan_items` terhubung ke `loans` tanpa `cascadeOnDelete()` di migration-nya, item-nya harus dihapus lebih dulu secara eksplisit sebelum baris `loans` induknya dihapus di `destroy()`, kalau tidak MySQL akan menolak lewat error foreign key constraint.
+
+`loans/edit.blade.php` menampilkan anggota dan buku sebagai teks baca-saja (bukan input, sesuai keputusan di atas), lalu cuma dua field yang benar-benar bisa diedit — perhatikan input `hidden` untuk `tanggal_pinjam`: field ini **wajib ada** meski tidak ditampilkan ke pengguna, karena aturan validasi `after_or_equal:tanggal_pinjam` di `update()` butuh nilai itu ada di data yang dikirim form, bukan diam-diam diambil dari database:
+
+```blade
+{{-- File: resources/views/loans/edit.blade.php --}}
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Peminjaman</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; max-width: 500px; }
+        label { display: block; margin-top: 12px; font-weight: bold; }
+        input, select { width: 100%; padding: 6px; margin-top: 4px; box-sizing: border-box; }
+        .error { color: #b91c1c; font-size: 14px; margin-top: 4px; }
+        .btn { margin-top: 20px; padding: 8px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+        .readonly { background: #f3f4f6; padding: 8px; border-radius: 4px; margin-top: 4px; }
+    </style>
+</head>
+<body>
+    <h1>Edit Peminjaman</h1>
+    <p><a href="{{ route('loans.index') }}">&larr; Kembali ke daftar peminjaman</a></p>
+
+    <label>Anggota</label>
+    <div class="readonly">{{ $loan['member']['nama'] }} ({{ $loan['member']['nim'] }})</div>
+
+    <label>Buku</label>
+    <div class="readonly">
+        @foreach ($loan['loanItems'] as $item)
+            {{ $item['book']['judul'] }}@if (!$loop->last), @endif
+        @endforeach
+    </div>
+
+    <form action="{{ route('loans.update', $loan['id']) }}" method="POST">
+        @csrf
+        @method('PUT')
+        <input type="hidden" name="tanggal_pinjam" value="{{ $loan['tanggal_pinjam'] }}">
+
+        <label for="tanggal_kembali">Tanggal Kembali</label>
+        <input type="date" name="tanggal_kembali" id="tanggal_kembali" value="{{ old('tanggal_kembali', $loan['tanggal_kembali']) }}">
+        @error('tanggal_kembali')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="status">Status</label>
+        <select name="status" id="status">
+            <option value="dipinjam" @selected(old('status', $loan['status']) == 'dipinjam')>Dipinjam</option>
+            <option value="dikembalikan" @selected(old('status', $loan['status']) == 'dikembalikan')>Dikembalikan</option>
+            <option value="terlambat" @selected(old('status', $loan['status']) == 'terlambat')>Terlambat</option>
+        </select>
+        @error('status')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <button type="submit" class="btn">Perbarui</button>
+    </form>
+</body>
+</html>
 ```
 
 > 📸 *Screenshot: form `/loans/create` terisi lengkap, lalu halaman `/loans` menampilkan nama anggota, nama petugas, dan judul buku (bukan ID) di baris transaksi yang baru dibuat.*

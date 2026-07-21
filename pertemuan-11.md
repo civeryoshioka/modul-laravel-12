@@ -33,6 +33,8 @@ Mahasiswa dianggap sudah menguasai seluruh topik berikut sebelum demo:
 8. **Pertemuan 9** — REST API, JSON, API Resource, HTTP Status Code, Postman
 9. **Pertemuan 10** — Laravel HTTP Client (consume API internal), Seeder & Factory
 
+Selain kesembilan topik di atas, dasar **Git & GitHub** (lihat [materi tambahan](./tambahan/git-github-dasar.md)) juga dianggap sudah dikuasai — bukan topik pertemuan tersendiri, tapi dipakai sejak Pertemuan 1 dan ikut dinilai lewat Aspek 5 (Repository GitHub) di rubrik.
+
 ---
 
 ## Sebelum Demo
@@ -111,6 +113,7 @@ Dosen memilih 3–5 pertanyaan sesuai sisa waktu per mahasiswa/kelompok. Penilai
 10. Jelaskan alasan teknis kenapa Dashboard dan Laporan Peminjaman butuh 2 server berbeda saat development di `php artisan serve`, dan apakah masalah ini akan muncul juga di server produksi sungguhan.
 11. Apa fungsi Seeder dan Factory, dan kenapa keduanya dipisah (bukan digabung jadi satu file)?
 12. Kalau harus menambah 1 tabel baru ke aplikasi ini (misalnya `publishers`), sebutkan urutan lengkap file yang perlu dibuat/diubah dari migration sampai tampil di Blade.
+13. Kenapa project ini memakai 2 branch (`dev` dan `main`) alih-alih commit langsung ke satu branch saja? Jelaskan juga kenapa commit checkpoint bertahap per pertemuan (`[P-1]`, `[P-2]`, dst) lebih baik dibanding satu commit besar di akhir semester.
 
 ---
 
@@ -164,9 +167,10 @@ Dosen memilih 3–5 pertanyaan sesuai sisa waktu per mahasiswa/kelompok. Penilai
 
 | Indikator | Poin |
 |---|---|
-| Branch `dev` aktif dengan commit checkpoint rapi `[P-1]` s.d. `[P-10]`, pesan sesuai isi perubahan aslinya | 6 |
-| Branch `main` sudah menerima merge dari `dev` (Tugas P10) — bukan `main` yang masih tertinggal di `[P-1]` | 5 |
-| `README.md` diupdate berisi instruksi menjalankan project, termasuk kebutuhan 2 server untuk Dashboard/Laporan | 4 |
+| Branch `dev` aktif dengan commit checkpoint rapi `[P-1]` s.d. `[P-10]`, pesan sesuai isi perubahan aslinya | 5 |
+| Branch `main` sudah menerima merge dari `dev` (Tugas P10) — bukan `main` yang masih tertinggal di `[P-1]` | 4 |
+| `README.md` diupdate berisi instruksi menjalankan project, termasuk kebutuhan 2 server untuk Dashboard/Laporan | 3 |
+| `DEMO.md` berisi skenario demo tertulis, cukup jelas untuk diikuti orang lain tanpa penjelasan tambahan | 3 |
 
 ### Skala Konversi Akhir
 

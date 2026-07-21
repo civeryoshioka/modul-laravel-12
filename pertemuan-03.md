@@ -165,225 +165,668 @@ php artisan make:request StoreBookRequest
 php artisan make:request StoreCategoryRequest
 ```
 
-Isi `rules()` dan `messages()` pada `StoreBookRequest` sesuai kolom-kolom tabel `books` yang sudah dirancang di awal modul (lihat desain database di Pertemuan 5 nanti). `authorize()` diubah jadi `true` karena autentikasi baru diimplementasikan di Pertemuan 8 — untuk saat ini semua orang "diizinkan" mengisi form.
+Ganti isi `authorize()`, `rules()`, dan `messages()` di file yang baru dibuat. `authorize()` diubah jadi `true` karena autentikasi baru diimplementasikan di Pertemuan 8 — untuk saat ini semua orang "diizinkan" mengisi form. Berikut isi **lengkap** `StoreBookRequest` — ganti seluruh isi class-nya persis seperti ini:
 
 ```php
 // File: app/Http/Requests/StoreBookRequest.php
-public function authorize(): bool
-{
-    return true;
-}
+<?php
 
-public function rules(): array
-{
-    return [
-        'judul' => 'required|string|max:200',
-        'penulis' => 'required|string|max:100',
-        'penerbit' => 'required|string|max:100',
-        'tahun_terbit' => 'required|integer|min:1900|max:'.date('Y'),
-        'isbn' => 'nullable|string|max:20',
-        'stok' => 'required|integer|min:0',
-        'category_id' => 'required|integer',
-    ];
-}
+namespace App\Http\Requests;
 
-public function messages(): array
+use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Foundation\Http\FormRequest;
+
+class StoreBookRequest extends FormRequest
 {
-    return [
-        'judul.required' => 'Judul buku wajib diisi.',
-        'category_id.required' => 'Kategori wajib dipilih.',
-        // pesan lain menyusul pola yang sama: field.rule => pesan
-    ];
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    /**
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        return [
+            'judul' => 'required|string|max:200',
+            'penulis' => 'required|string|max:100',
+            'penerbit' => 'required|string|max:100',
+            'tahun_terbit' => 'required|integer|min:1900|max:'.date('Y'),
+            'isbn' => 'nullable|string|max:20',
+            'stok' => 'required|integer|min:0',
+            'category_id' => 'required|integer',
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'judul.required' => 'Judul buku wajib diisi.',
+            'judul.max' => 'Judul buku maksimal 200 karakter.',
+            'penulis.required' => 'Nama penulis wajib diisi.',
+            'penerbit.required' => 'Nama penerbit wajib diisi.',
+            'tahun_terbit.required' => 'Tahun terbit wajib diisi.',
+            'tahun_terbit.integer' => 'Tahun terbit harus berupa angka.',
+            'tahun_terbit.min' => 'Tahun terbit tidak valid.',
+            'tahun_terbit.max' => 'Tahun terbit tidak boleh lebih dari tahun sekarang.',
+            'isbn.max' => 'ISBN maksimal 20 karakter.',
+            'stok.required' => 'Stok wajib diisi.',
+            'stok.integer' => 'Stok harus berupa angka.',
+            'stok.min' => 'Stok tidak boleh kurang dari 0.',
+            'category_id.required' => 'Kategori wajib dipilih.',
+        ];
+    }
 }
 ```
 
-Lakukan hal yang sama untuk `StoreCategoryRequest` sesuai kolom tabel `categories` (`nama_kategori`, `deskripsi`).
+> ⚠️ **Penting:** `messages()` harus diisi untuk **setiap kombinasi field dan rule** yang ingin ditampilkan dalam Bahasa Indonesia. Project ini belum mengatur `APP_LOCALE` ke `id`, jadi field yang tidak dikustomisasi pesannya akan tetap tampil pesan default Bahasa Inggris dari Laravel — kalau salah satu baris di atas kelewatan, hasilnya bercampur Indonesia-Inggris.
+
+Lakukan hal yang sama untuk `StoreCategoryRequest` — ini juga isi lengkapnya:
 
 ```php
 // File: app/Http/Requests/StoreCategoryRequest.php
-public function rules(): array
+<?php
+
+namespace App\Http\Requests;
+
+use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Foundation\Http\FormRequest;
+
+class StoreCategoryRequest extends FormRequest
 {
-    return [
-        'nama_kategori' => 'required|string|max:100',
-        'deskripsi' => 'nullable|string',
-    ];
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    /**
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        return [
+            'nama_kategori' => 'required|string|max:100',
+            'deskripsi' => 'nullable|string',
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'nama_kategori.required' => 'Nama kategori wajib diisi.',
+            'nama_kategori.max' => 'Nama kategori maksimal 100 karakter.',
+        ];
+    }
 }
 ```
 
 ### Langkah 2 — Mengisi BookController Secara Penuh
 
-Karena Migration & Model Eloquent baru dibuat di Pertemuan 5, data buku untuk sementara disimpan sebagai array dummy di dalam Controller. Semua method diisi logika nyata — tidak ada lagi yang mengembalikan string dummy.
+Karena Migration & Model Eloquent baru dibuat di Pertemuan 5, data buku untuk sementara disimpan sebagai array dummy di dalam Controller. **Semua 7 method resource diisi logika nyata** — tidak ada lagi yang mengembalikan string dummy. Perhatikan baris `use App\Http\Requests\StoreBookRequest;` di bagian atas file — ini **wajib ditambahkan sendiri**, karena skeleton Controller dari Pertemuan 2 cuma punya `use Illuminate\Http\Request;` bawaan. Tanpa baris ini, `store()` akan gagal dengan error `Class "App\Http\Controllers\StoreBookRequest" not found` begitu form disubmit.
+
+Berikut isi **lengkap** `BookController.php` setelah diubah:
 
 ```php
 // File: app/Http/Controllers/BookController.php
-private array $categories = [
-    ['id' => 1, 'nama_kategori' => 'Fiksi'],
-    ['id' => 2, 'nama_kategori' => 'Teknologi'],
-    ['id' => 3, 'nama_kategori' => 'Sejarah'],
-];
+<?php
 
-private array $books = [
-    ['id' => 1, 'judul' => 'Laskar Pelangi', 'penulis' => 'Andrea Hirata', 'penerbit' => 'Bentang Pustaka', 'tahun_terbit' => 2005, 'isbn' => '9789793062792', 'stok' => 5, 'category_id' => 1, 'kategori' => 'Fiksi'],
-    ['id' => 2, 'judul' => 'Bumi Manusia', 'penulis' => 'Pramoedya Ananta Toer', 'penerbit' => 'Hasta Mitra', 'tahun_terbit' => 1980, 'isbn' => '9789794330746', 'stok' => 3, 'category_id' => 1, 'kategori' => 'Fiksi'],
-    ['id' => 3, 'judul' => 'Clean Code', 'penulis' => 'Robert C. Martin', 'penerbit' => 'Prentice Hall', 'tahun_terbit' => 2008, 'isbn' => '9780132350884', 'stok' => 7, 'category_id' => 2, 'kategori' => 'Teknologi'],
-];
+namespace App\Http\Controllers;
 
-public function index()
+use App\Http\Requests\StoreBookRequest;
+use Illuminate\Http\Request;
+
+class BookController extends Controller
 {
-    $books = $this->books;
+    private array $categories = [
+        ['id' => 1, 'nama_kategori' => 'Fiksi'],
+        ['id' => 2, 'nama_kategori' => 'Teknologi'],
+        ['id' => 3, 'nama_kategori' => 'Sejarah'],
+    ];
 
-    return view('books.index', compact('books'));
-}
+    private array $books = [
+        ['id' => 1, 'judul' => 'Laskar Pelangi', 'penulis' => 'Andrea Hirata', 'penerbit' => 'Bentang Pustaka', 'tahun_terbit' => 2005, 'isbn' => '9789793062792', 'stok' => 5, 'category_id' => 1, 'kategori' => 'Fiksi'],
+        ['id' => 2, 'judul' => 'Bumi Manusia', 'penulis' => 'Pramoedya Ananta Toer', 'penerbit' => 'Hasta Mitra', 'tahun_terbit' => 1980, 'isbn' => '9789794330746', 'stok' => 3, 'category_id' => 1, 'kategori' => 'Fiksi'],
+        ['id' => 3, 'judul' => 'Clean Code', 'penulis' => 'Robert C. Martin', 'penerbit' => 'Prentice Hall', 'tahun_terbit' => 2008, 'isbn' => '9780132350884', 'stok' => 7, 'category_id' => 2, 'kategori' => 'Teknologi'],
+    ];
 
-public function store(StoreBookRequest $request)
-{
-    $validated = $request->validated();
+    public function index()
+    {
+        $books = $this->books;
 
-    return redirect()->route('books.index')
-        ->with('success', "Buku \"{$validated['judul']}\" berhasil ditambahkan (data dummy, belum tersimpan ke database).");
+        return view('books.index', compact('books'));
+    }
+
+    public function create()
+    {
+        $categories = $this->categories;
+
+        return view('books.create', compact('categories'));
+    }
+
+    public function store(StoreBookRequest $request)
+    {
+        $validated = $request->validated();
+
+        return redirect()->route('books.index')
+            ->with('success', "Buku \"{$validated['judul']}\" berhasil ditambahkan (data dummy, belum tersimpan ke database).");
+    }
+
+    public function show(string $id)
+    {
+        $book = collect($this->books)->firstWhere('id', (int) $id);
+
+        abort_if(! $book, 404);
+
+        return view('books.show', compact('book'));
+    }
+
+    public function edit(string $id)
+    {
+        $book = collect($this->books)->firstWhere('id', (int) $id);
+
+        abort_if(! $book, 404);
+
+        $categories = $this->categories;
+
+        return view('books.edit', compact('book', 'categories'));
+    }
+
+    public function update(Request $request, string $id)
+    {
+        $validated = $request->validate([
+            'judul' => 'required|string|max:200',
+            'penulis' => 'required|string|max:100',
+            'penerbit' => 'required|string|max:100',
+            'tahun_terbit' => 'required|integer|min:1900|max:'.date('Y'),
+            'isbn' => 'nullable|string|max:20',
+            'stok' => 'required|integer|min:0',
+            'category_id' => 'required|integer',
+        ]);
+
+        return redirect()->route('books.index')
+            ->with('success', "Buku \"{$validated['judul']}\" berhasil diperbarui (data dummy, belum tersimpan ke database).");
+    }
+
+    public function destroy(string $id)
+    {
+        return redirect()->route('books.index')
+            ->with('success', "Buku dengan id {$id} berhasil dihapus (data dummy, belum tersimpan ke database).");
+    }
 }
 ```
 
-`update()` sengaja ditulis memakai validasi **inline** (`$request->validate()`), bukan Form Request, supaya kamu bisa membandingkan langsung kedua gaya di project yang sama:
-
-```php
-// File: app/Http/Controllers/BookController.php
-public function update(Request $request, string $id)
-{
-    $validated = $request->validate([
-        'judul' => 'required|string|max:200',
-        'penulis' => 'required|string|max:100',
-        'penerbit' => 'required|string|max:100',
-        'tahun_terbit' => 'required|integer|min:1900|max:'.date('Y'),
-        'isbn' => 'nullable|string|max:20',
-        'stok' => 'required|integer|min:0',
-        'category_id' => 'required|integer',
-    ]);
-
-    return redirect()->route('books.index')
-        ->with('success', "Buku \"{$validated['judul']}\" berhasil diperbarui (data dummy, belum tersimpan ke database).");
-}
-```
-
-`show()` dan `edit()` mencari buku dari array dummy berdasarkan id, lalu melempar 404 kalau tidak ditemukan — perilaku ini nanti otomatis digantikan `findOrFail()` saat Eloquent masuk di Pertemuan 5:
-
-```php
-// File: app/Http/Controllers/BookController.php
-public function show(string $id)
-{
-    $book = collect($this->books)->firstWhere('id', (int) $id);
-
-    abort_if(! $book, 404);
-
-    return view('books.show', compact('book'));
-}
-```
-
-`destroy()` untuk saat ini hanya mengembalikan flash message sukses tanpa benar-benar menghapus apa pun, karena belum ada penyimpanan data sungguhan.
+Beberapa hal yang perlu diperhatikan dari kode di atas:
+- `create()` dan `edit()` sama-sama mengirim `$categories` ke view, karena keduanya menampilkan dropdown pilih kategori.
+- `show()` dan `edit()` mencari buku dari array dummy dengan `collect(...)->firstWhere('id', ...)`, lalu `abort_if(! $book, 404)` melempar halaman 404 kalau id tidak ditemukan — perilaku ini nanti otomatis digantikan `findOrFail()` saat Eloquent masuk di Pertemuan 5.
+- `update()` sengaja ditulis memakai validasi **inline** (`$request->validate()`), bukan Form Request, supaya kamu bisa membandingkan langsung kedua gaya di project yang sama.
+- `destroy()` untuk saat ini hanya mengembalikan flash message sukses tanpa benar-benar menghapus apa pun dari `$books`, karena array ini dibuat ulang dari nol setiap request (lihat bagian "Lifecycle Controller" di atas) — belum ada penyimpanan data yang sungguhan.
 
 ### Langkah 3 — Membuat View Buku (Tanpa Master Layout Dulu)
 
 Master layout (`layouts/app.blade.php`) baru dibangun di Pertemuan 4. Untuk saat ini, view ditulis sebagai HTML biasa lengkap dengan `<!DOCTYPE html>` sendiri-sendiri, cukup untuk mendemonstrasikan data dummy dan validasi.
 
+Berikut isi lengkap `books/index.blade.php` — tabel daftar buku, flash message sukses, dan link aksi (Detail/Edit/Hapus) di tiap baris:
+
 ```blade
 {{-- File: resources/views/books/index.blade.php --}}
-@if (session('success'))
-    <div class="success">{{ session('success') }}</div>
-@endif
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Daftar Buku</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+        th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
+        .success { background: #d1fae5; color: #065f46; padding: 10px 14px; border-radius: 4px; margin-top: 16px; }
+        .btn { display: inline-block; padding: 6px 14px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 4px; }
+        form.inline { display: inline; }
+    </style>
+</head>
+<body>
+    <h1>Daftar Buku</h1>
 
-<table>
-    @foreach ($books as $book)
-        <tr>
-            <td>{{ $book['judul'] }}</td>
-            <td>{{ $book['kategori'] }}</td>
-        </tr>
-    @endforeach
-</table>
+    @if (session('success'))
+        <div class="success">{{ session('success') }}</div>
+    @endif
+
+    <p><a href="{{ route('books.create') }}" class="btn">+ Tambah Buku</a></p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Judul</th>
+                <th>Penulis</th>
+                <th>Penerbit</th>
+                <th>Tahun</th>
+                <th>Stok</th>
+                <th>Kategori</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse ($books as $book)
+                <tr>
+                    <td>{{ $book['id'] }}</td>
+                    <td>{{ $book['judul'] }}</td>
+                    <td>{{ $book['penulis'] }}</td>
+                    <td>{{ $book['penerbit'] }}</td>
+                    <td>{{ $book['tahun_terbit'] }}</td>
+                    <td>{{ $book['stok'] }}</td>
+                    <td>{{ $book['kategori'] }}</td>
+                    <td>
+                        <a href="{{ route('books.show', $book['id']) }}">Detail</a>
+                        |
+                        <a href="{{ route('books.edit', $book['id']) }}">Edit</a>
+                        |
+                        <form class="inline" action="{{ route('books.destroy', $book['id']) }}" method="POST">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit">Hapus</button>
+                        </form>
+                    </td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="8">Belum ada data buku.</td>
+                </tr>
+            @endforelse
+        </tbody>
+    </table>
+
+    <p><em>Catatan: data di atas masih data dummy (array statis di Controller), belum dari database. Migration &amp; Model Eloquent baru dibuat di Pertemuan 5.</em></p>
+</body>
+</html>
 ```
+
+Selanjutnya `books/create.blade.php` — form tambah buku dengan dropdown kategori dan `@error` di setiap field:
 
 ```blade
 {{-- File: resources/views/books/create.blade.php --}}
-<form action="{{ route('books.store') }}" method="POST">
-    @csrf
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Tambah Buku</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; max-width: 500px; }
+        label { display: block; margin-top: 12px; font-weight: bold; }
+        input, select { width: 100%; padding: 6px; margin-top: 4px; box-sizing: border-box; }
+        .error { color: #b91c1c; font-size: 14px; margin-top: 4px; }
+        .btn { margin-top: 20px; padding: 8px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Tambah Buku</h1>
+    <p><a href="{{ route('books.index') }}">&larr; Kembali ke daftar buku</a></p>
 
-    <label for="judul">Judul</label>
-    <input type="text" name="judul" id="judul" value="{{ old('judul') }}">
-    @error('judul')
-        <div class="error">{{ $message }}</div>
-    @enderror
+    <form action="{{ route('books.store') }}" method="POST">
+        @csrf
 
-    <label for="category_id">Kategori</label>
-    <select name="category_id" id="category_id">
-        <option value="">-- Pilih Kategori --</option>
-        @foreach ($categories as $category)
-            <option value="{{ $category['id'] }}" @selected(old('category_id') == $category['id'])>
-                {{ $category['nama_kategori'] }}
-            </option>
-        @endforeach
-    </select>
+        <label for="judul">Judul</label>
+        <input type="text" name="judul" id="judul" value="{{ old('judul') }}">
+        @error('judul')
+            <div class="error">{{ $message }}</div>
+        @enderror
 
-    <button type="submit">Simpan</button>
-</form>
+        <label for="penulis">Penulis</label>
+        <input type="text" name="penulis" id="penulis" value="{{ old('penulis') }}">
+        @error('penulis')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="penerbit">Penerbit</label>
+        <input type="text" name="penerbit" id="penerbit" value="{{ old('penerbit') }}">
+        @error('penerbit')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="tahun_terbit">Tahun Terbit</label>
+        <input type="number" name="tahun_terbit" id="tahun_terbit" value="{{ old('tahun_terbit') }}">
+        @error('tahun_terbit')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="isbn">ISBN (opsional)</label>
+        <input type="text" name="isbn" id="isbn" value="{{ old('isbn') }}">
+        @error('isbn')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="stok">Stok</label>
+        <input type="number" name="stok" id="stok" value="{{ old('stok', 1) }}">
+        @error('stok')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="category_id">Kategori</label>
+        <select name="category_id" id="category_id">
+            <option value="">-- Pilih Kategori --</option>
+            @foreach ($categories as $category)
+                <option value="{{ $category['id'] }}" @selected(old('category_id') == $category['id'])>
+                    {{ $category['nama_kategori'] }}
+                </option>
+            @endforeach
+        </select>
+        @error('category_id')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <button type="submit" class="btn">Simpan</button>
+    </form>
+</body>
+</html>
 ```
 
 > 📸 *Screenshot: form "Tambah Buku" setelah submit kosong — setiap field menampilkan pesan error berwarna merah di bawahnya.*
 
-`books/edit.blade.php` mirip dengan `create.blade.php`, hanya saja `<form>`-nya mengarah ke `route('books.update', $book['id'])`, menambahkan `@method('PUT')`, dan setiap input memakai `old('field', $book['field'])` supaya nilai lama muncul saat pertama kali form dibuka. `books/show.blade.php` cukup menampilkan detail satu buku dalam bentuk tabel key-value.
+`books/edit.blade.php` isinya mirip `create.blade.php`, tapi ada tiga perbedaan penting: `<form>` mengarah ke `route('books.update', $book['id'])`, ditambahkan `@method('PUT')` (karena form HTML biasa cuma bisa mengirim GET/POST, bukan PUT), dan setiap input memakai `old('field', $book['field'])` — jadi kalau belum ada input lama (baru pertama kali buka form), yang tampil adalah data buku yang mau diedit; kalau validasi gagal, yang tampil adalah input terakhir yang diketik user:
+
+```blade
+{{-- File: resources/views/books/edit.blade.php --}}
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Buku</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; max-width: 500px; }
+        label { display: block; margin-top: 12px; font-weight: bold; }
+        input, select { width: 100%; padding: 6px; margin-top: 4px; box-sizing: border-box; }
+        .error { color: #b91c1c; font-size: 14px; margin-top: 4px; }
+        .btn { margin-top: 20px; padding: 8px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Edit Buku</h1>
+    <p><a href="{{ route('books.index') }}">&larr; Kembali ke daftar buku</a></p>
+
+    <form action="{{ route('books.update', $book['id']) }}" method="POST">
+        @csrf
+        @method('PUT')
+
+        <label for="judul">Judul</label>
+        <input type="text" name="judul" id="judul" value="{{ old('judul', $book['judul']) }}">
+        @error('judul')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="penulis">Penulis</label>
+        <input type="text" name="penulis" id="penulis" value="{{ old('penulis', $book['penulis']) }}">
+        @error('penulis')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="penerbit">Penerbit</label>
+        <input type="text" name="penerbit" id="penerbit" value="{{ old('penerbit', $book['penerbit']) }}">
+        @error('penerbit')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="tahun_terbit">Tahun Terbit</label>
+        <input type="number" name="tahun_terbit" id="tahun_terbit" value="{{ old('tahun_terbit', $book['tahun_terbit']) }}">
+        @error('tahun_terbit')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="isbn">ISBN (opsional)</label>
+        <input type="text" name="isbn" id="isbn" value="{{ old('isbn', $book['isbn']) }}">
+        @error('isbn')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="stok">Stok</label>
+        <input type="number" name="stok" id="stok" value="{{ old('stok', $book['stok']) }}">
+        @error('stok')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="category_id">Kategori</label>
+        <select name="category_id" id="category_id">
+            <option value="">-- Pilih Kategori --</option>
+            @foreach ($categories as $category)
+                <option value="{{ $category['id'] }}" @selected(old('category_id', $book['category_id']) == $category['id'])>
+                    {{ $category['nama_kategori'] }}
+                </option>
+            @endforeach
+        </select>
+        @error('category_id')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <button type="submit" class="btn">Perbarui</button>
+    </form>
+</body>
+</html>
+```
+
+> ⚠️ Perhatikan `@selected(old('category_id', $book['category_id']) == $category['id'])` — bagian `$book['category_id']` di situ yang membuat dropdown otomatis ter-select ke kategori buku yang sedang diedit. Kalau ditulis `old('category_id')` saja tanpa fallback, dropdown akan selalu kembali ke "-- Pilih Kategori --" setiap form dibuka pertama kali, meskipun buku itu sebenarnya sudah punya kategori.
+
+Terakhir `books/show.blade.php` — halaman detail satu buku, ditampilkan sebagai tabel key-value:
+
+```blade
+{{-- File: resources/views/books/show.blade.php --}}
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Detail Buku</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; max-width: 500px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+        th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
+        th { width: 160px; background: #f3f4f6; }
+    </style>
+</head>
+<body>
+    <h1>Detail Buku</h1>
+    <p><a href="{{ route('books.index') }}">&larr; Kembali ke daftar buku</a></p>
+
+    <table>
+        <tr>
+            <th>Judul</th>
+            <td>{{ $book['judul'] }}</td>
+        </tr>
+        <tr>
+            <th>Penulis</th>
+            <td>{{ $book['penulis'] }}</td>
+        </tr>
+        <tr>
+            <th>Penerbit</th>
+            <td>{{ $book['penerbit'] }}</td>
+        </tr>
+        <tr>
+            <th>Tahun Terbit</th>
+            <td>{{ $book['tahun_terbit'] }}</td>
+        </tr>
+        <tr>
+            <th>ISBN</th>
+            <td>{{ $book['isbn'] ?? '-' }}</td>
+        </tr>
+        <tr>
+            <th>Stok</th>
+            <td>{{ $book['stok'] }}</td>
+        </tr>
+        <tr>
+            <th>Kategori</th>
+            <td>{{ $book['kategori'] }}</td>
+        </tr>
+    </table>
+</body>
+</html>
+```
 
 ### Langkah 4 — Mengisi CategoryController (index & store)
 
-Sesuai target pertemuan ini, hanya `index()`, `create()`, dan `store()` yang diisi logika nyata. `edit()`, `update()`, `destroy()` tetap seperti kerangka Pertemuan 2 — CRUD kategori yang lengkap baru selesai di Pertemuan 5.
+Sesuai target pertemuan ini, hanya `index()`, `create()`, dan `store()` yang diisi logika nyata. `edit()`, `update()`, `destroy()` **tetap dibiarkan seperti kerangka Pertemuan 2** (return string dummy) — CRUD kategori yang lengkap baru selesai di Pertemuan 5. Sama seperti `BookController`, jangan lupa tambahkan baris `use App\Http\Requests\StoreCategoryRequest;` di bagian atas file.
+
+Berikut isi lengkap `CategoryController.php`:
 
 ```php
 // File: app/Http/Controllers/CategoryController.php
-private array $categories = [
-    ['id' => 1, 'nama_kategori' => 'Fiksi', 'deskripsi' => 'Buku cerita rekaan seperti novel dan kumpulan cerpen.'],
-    ['id' => 2, 'nama_kategori' => 'Teknologi', 'deskripsi' => 'Buku seputar teknologi, pemrograman, dan ilmu komputer.'],
-    ['id' => 3, 'nama_kategori' => 'Sejarah', 'deskripsi' => 'Buku bertema sejarah dan biografi tokoh.'],
-];
+<?php
 
-public function index()
+namespace App\Http\Controllers;
+
+use App\Http\Requests\StoreCategoryRequest;
+use Illuminate\Http\Request;
+
+class CategoryController extends Controller
 {
-    $categories = $this->categories;
+    private array $categories = [
+        ['id' => 1, 'nama_kategori' => 'Fiksi', 'deskripsi' => 'Buku cerita rekaan seperti novel dan kumpulan cerpen.'],
+        ['id' => 2, 'nama_kategori' => 'Teknologi', 'deskripsi' => 'Buku seputar teknologi, pemrograman, dan ilmu komputer.'],
+        ['id' => 3, 'nama_kategori' => 'Sejarah', 'deskripsi' => 'Buku bertema sejarah dan biografi tokoh.'],
+    ];
 
-    return view('categories.index', compact('categories'));
-}
+    public function index()
+    {
+        $categories = $this->categories;
 
-public function create()
-{
-    return view('categories.create');
-}
+        return view('categories.index', compact('categories'));
+    }
 
-public function store(StoreCategoryRequest $request)
-{
-    $validated = $request->validated();
+    public function create()
+    {
+        return view('categories.create');
+    }
 
-    return redirect()->route('categories.index')
-        ->with('success', "Kategori \"{$validated['nama_kategori']}\" berhasil ditambahkan (data dummy, belum tersimpan ke database).");
+    public function store(StoreCategoryRequest $request)
+    {
+        $validated = $request->validated();
+
+        return redirect()->route('categories.index')
+            ->with('success', "Kategori \"{$validated['nama_kategori']}\" berhasil ditambahkan (data dummy, belum tersimpan ke database).");
+    }
+
+    public function edit(string $id)
+    {
+        return "CategoryController@edit, id: {$id}";
+    }
+
+    public function update(Request $request, string $id)
+    {
+        return "CategoryController@update, id: {$id}";
+    }
+
+    public function destroy(string $id)
+    {
+        return "CategoryController@destroy, id: {$id}";
+    }
 }
 ```
 
 ### Langkah 5 — Membuat View Kategori
 
+Berikut isi lengkap `categories/index.blade.php`:
+
 ```blade
-{{-- File: resources/views/categories/create.blade.php --}}
-<form action="{{ route('categories.store') }}" method="POST">
-    @csrf
+{{-- File: resources/views/categories/index.blade.php --}}
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Daftar Kategori</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+        th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
+        .success { background: #d1fae5; color: #065f46; padding: 10px 14px; border-radius: 4px; margin-top: 16px; }
+        .btn { display: inline-block; padding: 6px 14px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>Daftar Kategori</h1>
 
-    <label for="nama_kategori">Nama Kategori</label>
-    <input type="text" name="nama_kategori" id="nama_kategori" value="{{ old('nama_kategori') }}">
-    @error('nama_kategori')
-        <div class="error">{{ $message }}</div>
-    @enderror
+    @if (session('success'))
+        <div class="success">{{ session('success') }}</div>
+    @endif
 
-    <label for="deskripsi">Deskripsi (opsional)</label>
-    <textarea name="deskripsi" id="deskripsi">{{ old('deskripsi') }}</textarea>
+    <p><a href="{{ route('categories.create') }}" class="btn">+ Tambah Kategori</a></p>
 
-    <button type="submit">Simpan</button>
-</form>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nama Kategori</th>
+                <th>Deskripsi</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse ($categories as $category)
+                <tr>
+                    <td>{{ $category['id'] }}</td>
+                    <td>{{ $category['nama_kategori'] }}</td>
+                    <td>{{ $category['deskripsi'] ?? '-' }}</td>
+                    <td>
+                        <a href="{{ route('categories.edit', $category['id']) }}">Edit</a>
+                        |
+                        <form style="display:inline" action="{{ route('categories.destroy', $category['id']) }}" method="POST">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit">Hapus</button>
+                        </form>
+                    </td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="4">Belum ada data kategori.</td>
+                </tr>
+            @endforelse
+        </tbody>
+    </table>
+
+    <p><em>Catatan: data di atas masih data dummy (array statis di Controller), belum dari database. Migration &amp; Model Eloquent baru dibuat di Pertemuan 5.</em></p>
+</body>
+</html>
 ```
 
-`categories/index.blade.php` mengikuti pola yang sama seperti `books/index.blade.php`: menampilkan flash message sukses, lalu me-loop `$categories`.
+> ⚠️ Link "Edit" dan tombol "Hapus" di halaman ini mengarah ke `CategoryController@edit`/`@destroy` yang **masih dummy** (lihat Langkah 4) — klik keduanya masih akan menampilkan teks polos seperti `CategoryController@edit, id: 1`, bukan halaman edit sungguhan. Ini memang disengaja untuk pertemuan ini; CRUD kategori lengkap baru dikerjakan di Pertemuan 5.
+
+Dan `categories/create.blade.php`:
+
+```blade
+{{-- File: resources/views/categories/create.blade.php --}}
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Tambah Kategori</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; max-width: 500px; }
+        label { display: block; margin-top: 12px; font-weight: bold; }
+        input, textarea { width: 100%; padding: 6px; margin-top: 4px; box-sizing: border-box; }
+        .error { color: #b91c1c; font-size: 14px; margin-top: 4px; }
+        .btn { margin-top: 20px; padding: 8px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Tambah Kategori</h1>
+    <p><a href="{{ route('categories.index') }}">&larr; Kembali ke daftar kategori</a></p>
+
+    <form action="{{ route('categories.store') }}" method="POST">
+        @csrf
+
+        <label for="nama_kategori">Nama Kategori</label>
+        <input type="text" name="nama_kategori" id="nama_kategori" value="{{ old('nama_kategori') }}">
+        @error('nama_kategori')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <label for="deskripsi">Deskripsi (opsional)</label>
+        <textarea name="deskripsi" id="deskripsi" rows="4">{{ old('deskripsi') }}</textarea>
+        @error('deskripsi')
+            <div class="error">{{ $message }}</div>
+        @enderror
+
+        <button type="submit" class="btn">Simpan</button>
+    </form>
+</body>
+</html>
+```
 
 ### Langkah 6 — Ujicoba
 

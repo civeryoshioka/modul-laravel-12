@@ -138,6 +138,7 @@ php artisan make:seeder UserSeeder
 
 ```php
 // File: database/seeders/UserSeeder.php
+use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 
 public function run(): void
@@ -160,11 +161,18 @@ public function run(): void
         ]
     );
 
-    // Petugas Dua mengikuti pola yang sama...
+    User::updateOrCreate(
+        ['email' => 'petugas2@pens.ac.id'],
+        [
+            'name' => 'Petugas Dua',
+            'password' => Hash::make('password'),
+            'role' => 'petugas',
+        ]
+    );
 }
 ```
 
-`Hash::make()` wajib dipakai — password tidak pernah disimpan sebagai teks biasa di database. `updateOrCreate()` mencari baris berdasarkan argumen pertama (`email`), dan kalau ketemu, memperbarui kolom di argumen kedua alih-alih membuat baris baru — ini penting karena project ini sudah punya data user manual dari pengujian Pertemuan 7 (`admin@test.local`) yang tidak boleh terduplikasi.
+`use App\Models\User;` wajib ditambahkan di baris paling atas file (di bawah `namespace Database\Seeders;` yang sudah dibuat otomatis oleh Artisan) — tanpa baris ini, `User::updateOrCreate(...)` akan dicari PHP di namespace `Database\Seeders\User` yang tidak ada, dan seeder gagal jalan dengan error `Class "Database\Seeders\User" not found`. `Hash::make()` wajib dipakai — password tidak pernah disimpan sebagai teks biasa di database. `updateOrCreate()` mencari baris berdasarkan argumen pertama (`email`), dan kalau ketemu, memperbarui kolom di argumen kedua alih-alih membuat baris baru — ini penting karena project ini sudah punya data user manual dari pengujian Pertemuan 7 (`admin@test.local`) yang tidak boleh terduplikasi.
 
 `DatabaseSeeder` dipanggil untuk mengorkestrasi `UserSeeder`:
 
@@ -184,11 +192,18 @@ php artisan db:seed --class=UserSeeder
 
 ### Langkah 2 — Membuat `AuthController`
 
-`AuthController` dibuat manual (tanpa starter kit seperti Breeze/Jetstream) supaya mahasiswa memahami persis apa yang terjadi di balik proses login:
+`AuthController` dibuat manual (tanpa starter kit seperti Breeze/Jetstream) supaya mahasiswa memahami persis apa yang terjadi di balik proses login. Karena controller ini tidak berbentuk resource (tidak ada `index`/`store`/dst standar), dibuat sebagai controller polos:
+
+```bash
+php artisan make:controller AuthController
+```
+
+Perintah di atas menghasilkan class kosong, tapi **sudah otomatis menyertakan** `use Illuminate\Http\Request;` di bagian atas file — beda dari middleware/seeder yang stub-nya benar-benar kosong. Cek dulu isi file yang baru dibuat sebelum menambah apa pun, supaya baris itu tidak dituliskan dobel (menulis `use Illuminate\Http\Request;` dua kali di file yang sama membuat PHP gagal dengan error `Cannot use Illuminate\Http\Request as Request because the name is already in use`). Yang perlu ditambahkan secara manual hanya `use Illuminate\Support\Facades\Auth;` (satu baris saja, di bawah `use Illuminate\Http\Request;` yang sudah ada), lalu isi ketiga method di dalam class:
 
 ```php
 // File: app/Http/Controllers/AuthController.php
-use Illuminate\Support\Facades\Auth;
+// use Illuminate\Http\Request; ← baris ini SUDAH ADA dari hasil generate, jangan ditulis ulang
+use Illuminate\Support\Facades\Auth; // ← baris ini yang perlu ditambahkan manual
 
 public function showLogin()
 {
@@ -200,6 +215,10 @@ public function login(Request $request)
     $credentials = $request->validate([
         'email' => 'required|email',
         'password' => 'required',
+    ], [
+        'email.required' => 'Email wajib diisi.',
+        'email.email' => 'Format email tidak valid.',
+        'password.required' => 'Password wajib diisi.',
     ]);
 
     if (! Auth::attempt($credentials, $request->boolean('remember'))) {
@@ -221,50 +240,89 @@ public function logout(Request $request)
     $request->session()->invalidate();
     $request->session()->regenerateToken();
 
-    return redirect()->route('login')->with('success', 'Logout berhasil.');
+    return redirect()->route('login')
+        ->with('success', 'Logout berhasil.');
 }
 ```
 
-`$request->session()->regenerate()` setelah login berhasil mengganti ID session lama dengan yang baru — mencegah **session fixation attack**, skenario di mana penyerang sudah tahu ID session korban *sebelum* korban login, lalu memanfaatkannya begitu korban berhasil login. Pola yang sama berlaku terbalik saat logout: `invalidate()` menghapus seluruh data session, dan `regenerateToken()` mengganti token CSRF supaya form yang mungkin masih terbuka di tab lain tidak bisa dipakai lagi. `redirect()->intended()` mengembalikan user ke halaman yang tadinya ingin diakses sebelum diarahkan ke login (kalau ada), atau ke `/books` sebagai default.
+`login()` dan `logout()` sama-sama menerima parameter `Request $request`, makanya `use Illuminate\Http\Request;` wajib ada — tapi karena Artisan sudah menyediakannya otomatis di stub, tugas mahasiswa di sini cuma memastikan baris itu **tidak dihapus**, bukan menambahkannya lagi. `$request->session()->regenerate()` setelah login berhasil mengganti ID session lama dengan yang baru — mencegah **session fixation attack**, skenario di mana penyerang sudah tahu ID session korban *sebelum* korban login, lalu memanfaatkannya begitu korban berhasil login. Pola yang sama berlaku terbalik saat logout: `invalidate()` menghapus seluruh data session, dan `regenerateToken()` mengganti token CSRF supaya form yang mungkin masih terbuka di tab lain tidak bisa dipakai lagi. `redirect()->intended()` mengembalikan user ke halaman yang tadinya ingin diakses sebelum diarahkan ke login (kalau ada), atau ke `/books` sebagai default.
 
 ### Langkah 3 — Membuat Halaman Login
 
-`resources/views/auth/login.blade.php` dibuat sebagai halaman mandiri (tidak memakai `layouts/app.blade.php`, karena navbar aplikasi hanya relevan untuk user yang sudah login):
+`resources/views/auth/login.blade.php` dibuat sebagai halaman mandiri, file baru penuh (tidak memakai `layouts/app.blade.php`, karena navbar aplikasi hanya relevan untuk user yang sudah login — halaman ini butuh `<!DOCTYPE html>`, `<head>`, dan style sendiri):
 
 ```blade
 {{-- File: resources/views/auth/login.blade.php --}}
-<form action="{{ route('login') }}" method="POST">
-    @csrf
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Login — Perpustakaan Digital Kampus</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background: #f1f5f9; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .login-box { background: #fff; padding: 32px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.1); width: 100%; max-width: 360px; }
+        .login-box h1 { font-size: 20px; margin-top: 0; text-align: center; }
+        label { display: block; margin-top: 12px; font-weight: bold; }
+        input { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
+        .error { color: #b91c1c; font-size: 14px; margin-top: 4px; }
+        .alert-success { background: #d1fae5; color: #065f46; padding: 10px 14px; border-radius: 4px; margin-bottom: 16px; }
+        .checkbox-row { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
+        .checkbox-row label { display: inline; margin-top: 0; font-weight: normal; }
+        .btn { margin-top: 20px; width: 100%; padding: 10px; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 15px; }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <h1>📚 Login Perpustakaan</h1>
 
-    <label for="email">Email</label>
-    <input type="email" name="email" id="email" value="{{ old('email') }}">
-    @error('email')
-        <div class="error">{{ $message }}</div>
-    @enderror
+        @if (session('success'))
+            <div class="alert-success">{{ session('success') }}</div>
+        @endif
 
-    <label for="password">Password</label>
-    <input type="password" name="password" id="password">
-    @error('password')
-        <div class="error">{{ $message }}</div>
-    @enderror
+        <form action="{{ route('login') }}" method="POST">
+            @csrf
 
-    <div class="checkbox-row">
-        <input type="checkbox" name="remember" id="remember">
-        <label for="remember">Ingat saya</label>
+            <label for="email">Email</label>
+            <input type="email" name="email" id="email" value="{{ old('email') }}" autofocus>
+            @error('email')
+                <div class="error">{{ $message }}</div>
+            @enderror
+
+            <label for="password">Password</label>
+            <input type="password" name="password" id="password">
+            @error('password')
+                <div class="error">{{ $message }}</div>
+            @enderror
+
+            <div class="checkbox-row">
+                <input type="checkbox" name="remember" id="remember">
+                <label for="remember">Ingat saya</label>
+            </div>
+
+            <button type="submit" class="btn">Login</button>
+        </form>
     </div>
-
-    <button type="submit" class="btn">Login</button>
-</form>
+</body>
+</html>
 ```
+
+Blok `@if (session('success'))` di atas form penting jangan sampai kelewat — `AuthController@logout` mengirim flash message `'Logout berhasil.'`, dan halaman ini satu-satunya tempat pesan itu bisa tampil (karena setelah logout, user diarahkan balik ke `/login`, bukan ke halaman ber-layout `app.blade.php`).
 
 > 📸 *Screenshot: halaman `/login` menampilkan form email, password, checkbox "Ingat saya", dan tombol Login.*
 
 ### Langkah 4 — Menambahkan Route Login/Logout dan Melindungi Route CRUD
 
-`routes/web.php` disusun ulang mengikuti struktur di bagian G `master-outline.md`: route login/logout tetap publik, sementara seluruh route CRUD dibungkus middleware `auth`:
+`routes/web.php` disusun ulang total mengikuti struktur di bagian G `master-outline.md`: route login/logout tetap publik, sementara seluruh route CRUD dibungkus middleware `auth`. **Ganti seluruh isi `routes/web.php` dengan kode di bawah ini** (perhatikan baris `use` di paling atas — `AuthController` baru, wajib ditambahkan, kalau tidak PHP tidak akan kenal class itu dan seluruh halaman ikut error karena file ini dimuat di setiap request):
 
 ```php
 // File: routes/web.php
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BookController;
+use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\LoanController;
+use App\Http\Controllers\MemberController;
+use Illuminate\Support\Facades\Route;
+
 // Public
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login']);
@@ -283,6 +341,8 @@ Route::middleware(['auth'])->group(function () {
         ->name('loans.kembalikan');
 });
 ```
+
+Perhatikan: baris `Route::resource('categories', CategoryController::class)->except(['show']);` yang sejak Pertemuan 5 berdiri sendiri di luar group mana pun **sengaja dihilangkan dulu** dari potongan di atas — bukan lupa. Kalau baris lama itu masih tersisa di file kamu setelah paste kode di atas, **hapus manual**, karena akan ditambahkan lagi dalam bentuk yang sudah diproteksi di Langkah 5. Kalau baris lama dibiarkan nyangkut di luar group, route lama yang tidak terproteksi itu tetap aktif dan bisa "menang" saat dicocokkan Laravel — akibatnya middleware admin di Langkah 5 terlihat tidak berfungsi padahal sebenarnya cuma route lama yang belum dihapus.
 
 Route `/` untuk sementara hanya redirect ke `/books` — halaman dashboard dengan statistik sungguhan baru dibangun di Pertemuan 10 setelah REST API tersedia, jadi belum ada `DashboardController` di titik ini.
 
@@ -321,54 +381,81 @@ use App\Http\Middleware\CheckAdminRole;
 })
 ```
 
-Berdasarkan deskripsi aktor di bagian D `master-outline.md` — admin "mengelola seluruh data" sementara petugas fokus ke "operasional harian (peminjaman, pengembalian)" — kelola Kategori dipilih sebagai contoh route yang dibatasi khusus admin, karena sifatnya administratif/konfigurasi, bukan pekerjaan harian petugas:
+Berdasarkan deskripsi aktor di bagian D `master-outline.md` — admin "mengelola seluruh data" sementara petugas fokus ke "operasional harian (peminjaman, pengembalian)" — kelola Kategori dipilih sebagai contoh route yang dibatasi khusus admin, karena sifatnya administratif/konfigurasi, bukan pekerjaan harian petugas. Tambahkan blok ini **di dalam** group `auth` yang sudah dibuat di Langkah 4 (ditulis persis sebelum tanda kurung tutup `});` milik group `auth`, bukan di luarnya):
 
 ```php
-// File: routes/web.php
+// File: routes/web.php — masih di dalam Route::middleware(['auth'])->group(function () { ... });
 Route::middleware(['admin'])->group(function () {
     Route::resource('categories', CategoryController::class)->except(['show']);
 });
 ```
 
-Route group ini tetap berada **di dalam** group `auth` di Langkah 4, jadi request harus lolos dua lapis pengecekan: login dulu (`auth`), baru role admin (`admin`).
+Route group ini tetap berada **di dalam** group `auth` di Langkah 4, jadi request harus lolos dua lapis pengecekan: login dulu (`auth`), baru role admin (`admin`). Kalau ditulis di luar group `auth` (misalnya diletakkan setelah `});` penutup group `auth`), route ini tetap terproteksi admin, tapi tidak lagi mewajibkan login lebih dulu — hasilnya bisa tidak konsisten dengan menu navbar yang mengasumsikan user sudah login.
 
 > 📸 *Screenshot: user dengan role petugas yang mencoba membuka `/categories` mendapat halaman 403 Forbidden.*
 
 ### Langkah 6 — Menampilkan Identitas User di Navbar
 
-`partials/navbar.blade.php` diubah untuk menyembunyikan seluruh menu dari user yang belum login, menampilkan menu Kategori hanya untuk admin, dan menambahkan nama, role, serta tombol logout:
+`partials/navbar.blade.php` diubah untuk menyembunyikan seluruh menu dari user yang belum login, menampilkan menu Kategori hanya untuk admin, dan menambahkan nama, role, serta tombol logout. Atribut `class="{{ request()->routeIs(...) }}"` di setiap link (fitur *active state* dari Pertemuan 4) **tetap dipertahankan**, bukan dihapus:
 
 ```blade
 {{-- File: resources/views/partials/navbar.blade.php --}}
-@auth
-    <ul>
-        <li><a href="{{ route('books.index') }}">Buku</a></li>
-        @if (auth()->user()->role === 'admin')
-            <li><a href="{{ route('categories.index') }}">Kategori</a></li>
-        @endif
-        <li><a href="{{ route('members.index') }}">Anggota</a></li>
-        <li><a href="{{ route('loans.index') }}">Peminjaman</a></li>
-    </ul>
-    <div class="navbar-user">
-        <span>{{ auth()->user()->name }} ({{ ucfirst(auth()->user()->role) }})</span>
-        <form action="{{ route('logout') }}" method="POST" class="inline">
-            @csrf
-            <button type="submit" class="btn-logout">Logout</button>
-        </form>
-    </div>
-@endauth
-@guest
-    <a href="{{ route('login') }}">Login</a>
-@endguest
+<nav>
+    <div class="brand">📚 Perpustakaan Digital Kampus</div>
+    @auth
+        <ul>
+            <li><a href="{{ route('books.index') }}" class="{{ request()->routeIs('books.*') ? 'active' : '' }}">Buku</a></li>
+            @if (auth()->user()->role === 'admin')
+                <li><a href="{{ route('categories.index') }}" class="{{ request()->routeIs('categories.*') ? 'active' : '' }}">Kategori</a></li>
+            @endif
+            <li><a href="{{ route('members.index') }}" class="{{ request()->routeIs('members.*') ? 'active' : '' }}">Anggota</a></li>
+            <li><a href="{{ route('loans.index') }}" class="{{ request()->routeIs('loans.*') ? 'active' : '' }}">Peminjaman</a></li>
+        </ul>
+        <div class="navbar-user">
+            <span>{{ auth()->user()->name }} ({{ ucfirst(auth()->user()->role) }})</span>
+            <form action="{{ route('logout') }}" method="POST" class="inline">
+                @csrf
+                <button type="submit" class="btn-logout">Logout</button>
+            </form>
+        </div>
+    @endauth
+    @guest
+        <a href="{{ route('login') }}" class="{{ request()->routeIs('login') ? 'active' : '' }}">Login</a>
+    @endguest
+</nav>
 ```
 
 Logout wajib berupa `<form method="POST">`, bukan link `<a>` biasa — route `/logout` didaftarkan sebagai `POST` (bukan `GET`) supaya logout tidak bisa dipicu tidak sengaja lewat prefetch browser atau crawler yang mengikuti semua link `GET` di halaman.
+
+Elemen `.navbar-user` dan `.btn-logout` di atas belum punya style — tanpa ditambahkan dulu, tombol Logout akan tampil sebagai tombol putih polos bawaan browser, tidak menyatu dengan warna navbar. Tambahkan 3 baris berikut ke dalam `<style>` yang sudah ada di `layouts/app.blade.php`, persis di bawah baris `nav ul li a.active { ... }`:
+
+```css
+/* File: resources/views/layouts/app.blade.php — di dalam <style>, setelah aturan nav ul li a.active */
+nav .navbar-user { display: flex; align-items: center; gap: 12px; color: #cbd5e1; font-size: 14px; }
+nav .btn-logout { background: none; border: 1px solid #cbd5e1; color: #cbd5e1; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 14px; }
+nav .btn-logout:hover { background: #1e40af; color: #fff; }
+```
 
 > 📸 *Screenshot: navbar menampilkan nama dan role user login (contoh: "Admin Perpustakaan (Admin)") beserta tombol Logout, dengan menu Kategori hanya muncul untuk role admin.*
 
 ### Langkah 7 — Menyederhanakan `LoanController@store`
 
-Dropdown "Petugas" yang tadinya dipilih manual di `loans/create.blade.php` (workaround sementara dari Pertemuan 7) sekarang diganti `auth()->id()`, karena identitas user yang login sudah tersedia:
+Dropdown "Petugas" yang tadinya dipilih manual di `loans/create.blade.php` (workaround sementara dari Pertemuan 7) sekarang diganti `auth()->id()`, karena identitas user yang login sudah tersedia. Ini menyentuh dua method di `LoanController`: `create()` tidak lagi perlu mengambil daftar user, dan `store()` tidak lagi menerima `user_id` dari input form.
+
+`create()` disederhanakan — hapus baris `$users = User::all();` dan hapus `use App\Models\User;` dari bagian atas file (sudah tidak dipakai method mana pun lagi):
+
+```php
+// File: app/Http/Controllers/LoanController.php
+public function create()
+{
+    $members = Member::all();
+    $books = Book::all();
+
+    return view('loans.create', compact('members', 'books'));
+}
+```
+
+`store()` tidak lagi memvalidasi `user_id` dari input, langsung diisi dari `auth()->id()`:
 
 ```php
 // File: app/Http/Controllers/LoanController.php

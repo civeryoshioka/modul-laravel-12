@@ -241,7 +241,20 @@ Master layout menampung seluruh struktur HTML yang sebelumnya diulang di setiap 
     <meta charset="UTF-8">
     <title>@yield('title', 'Perpustakaan Digital Kampus')</title>
     <style>
-        /* style bersama untuk seluruh halaman: nav, table, alert, tombol */
+        * { box-sizing: border-box; }
+        body { font-family: sans-serif; margin: 0; color: #1f2937; }
+        nav { background: #1e3a8a; padding: 14px 40px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+        nav .brand { color: #fff; font-weight: bold; font-size: 18px; }
+        nav ul { list-style: none; display: flex; gap: 20px; margin: 0; padding: 0; }
+        nav ul li a { color: #cbd5e1; text-decoration: none; padding: 6px 4px; }
+        nav ul li a.active { color: #fff; font-weight: bold; border-bottom: 2px solid #fff; }
+        main { max-width: 900px; margin: 0 auto; padding: 30px 40px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+        th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
+        .alert-success { background: #d1fae5; color: #065f46; padding: 10px 14px; border-radius: 4px; margin-bottom: 16px; }
+        .btn { display: inline-block; padding: 6px 14px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 4px; border: none; cursor: pointer; }
+        form.inline { display: inline; }
+        footer { text-align: center; padding: 20px; color: #6b7280; font-size: 14px; border-top: 1px solid #e5e7eb; margin-top: 40px; }
     </style>
 </head>
 <body>
@@ -259,6 +272,8 @@ Master layout menampung seluruh struktur HTML yang sebelumnya diulang di setiap 
 </body>
 </html>
 ```
+
+Class CSS yang dipakai di sini bukan sekadar hiasan — `.active` (dipakai navbar untuk menyorot menu), `.alert-success` (dipakai partial alert), dan `.btn` (dipakai tombol "+ Tambah") semuanya baru benar-benar terlihat efeknya kalau blok `<style>` ini lengkap seperti di atas.
 
 `@yield('content')` adalah lubang utama yang nanti diisi oleh setiap halaman lewat `@section('content') ... @endsection`. `@include('partials.navbar')` dan `@include('partials.alert')` menempelkan dua komponen kecil yang akan dibuat di langkah berikutnya.
 
@@ -308,10 +323,53 @@ Isi `<!DOCTYPE html>`, `<head>`, dan blok alert manual dihapus dari file ini —
     <p><a href="{{ route('books.create') }}" class="btn">+ Tambah Buku</a></p>
 
     <table>
-        {{-- header tabel dan @forelse ($books as $book) persis seperti Pertemuan 3 --}}
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Judul</th>
+                <th>Penulis</th>
+                <th>Penerbit</th>
+                <th>Tahun</th>
+                <th>Stok</th>
+                <th>Kategori</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse ($books as $book)
+                <tr>
+                    <td>{{ $book['id'] }}</td>
+                    <td>{{ $book['judul'] }}</td>
+                    <td>{{ $book['penulis'] }}</td>
+                    <td>{{ $book['penerbit'] }}</td>
+                    <td>{{ $book['tahun_terbit'] }}</td>
+                    <td>{{ $book['stok'] }}</td>
+                    <td>{{ $book['kategori'] }}</td>
+                    <td>
+                        <a href="{{ route('books.show', $book['id']) }}">Detail</a>
+                        |
+                        <a href="{{ route('books.edit', $book['id']) }}">Edit</a>
+                        |
+                        <form class="inline" action="{{ route('books.destroy', $book['id']) }}" method="POST">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit">Hapus</button>
+                        </form>
+                    </td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="8">Belum ada data buku.</td>
+                </tr>
+            @endforelse
+        </tbody>
     </table>
+
+    <p><em>Catatan: data di atas masih data dummy (array statis di Controller), belum dari database. Migration &amp; Model Eloquent baru dibuat di Pertemuan 5.</em></p>
 @endsection
 ```
+
+Isi `<tbody>` ini persis dengan tabel yang sudah kamu buat di Pertemuan 3 — cuma dipindah ke dalam `@section('content')`, tidak ada logic baru. Kalau kamu masih punya file lama, tinggal salin isi `<table>`-nya ke sini; jangan sampai isi tabelnya hilang, karena tanpa `@forelse` ini halaman `/books` akan tampil tapi tabelnya kosong.
 
 > 📸 *Screenshot: halaman `/books` tampil dengan navbar biru di atas, menu "Buku" tersorot aktif, dan tabel data dummy di bawahnya.*
 
@@ -327,7 +385,43 @@ Pola yang sama persis diterapkan ke `categories/index.blade.php`: bungkus konten
 
 @section('content')
     <h1>Daftar Kategori</h1>
-    {{-- tabel @forelse ($categories as $category) persis seperti Pertemuan 3 --}}
+
+    <p><a href="{{ route('categories.create') }}" class="btn">+ Tambah Kategori</a></p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nama Kategori</th>
+                <th>Deskripsi</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse ($categories as $category)
+                <tr>
+                    <td>{{ $category['id'] }}</td>
+                    <td>{{ $category['nama_kategori'] }}</td>
+                    <td>{{ $category['deskripsi'] ?? '-' }}</td>
+                    <td>
+                        <a href="{{ route('categories.edit', $category['id']) }}">Edit</a>
+                        |
+                        <form class="inline" action="{{ route('categories.destroy', $category['id']) }}" method="POST">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit">Hapus</button>
+                        </form>
+                    </td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="4">Belum ada data kategori.</td>
+                </tr>
+            @endforelse
+        </tbody>
+    </table>
+
+    <p><em>Catatan: data di atas masih data dummy (array statis di Controller), belum dari database. Migration &amp; Model Eloquent baru dibuat di Pertemuan 5.</em></p>
 @endsection
 ```
 
@@ -363,16 +457,35 @@ Kemudian buat view-nya, langsung memakai master layout sejak awal (tidak seperti
     <h1>Daftar Anggota</h1>
 
     <table>
-        @forelse ($members as $member)
+        <thead>
             <tr>
-                <td>{{ $member['nama'] }}</td>
-                <td>{{ $member['nim'] }}</td>
-                <td>{{ ucfirst($member['status']) }}</td>
+                <th>ID</th>
+                <th>Nama</th>
+                <th>NIM</th>
+                <th>Email</th>
+                <th>No. Telepon</th>
+                <th>Status</th>
             </tr>
-        @empty
-            <tr><td colspan="3">Belum ada data anggota.</td></tr>
-        @endforelse
+        </thead>
+        <tbody>
+            @forelse ($members as $member)
+                <tr>
+                    <td>{{ $member['id'] }}</td>
+                    <td>{{ $member['nama'] }}</td>
+                    <td>{{ $member['nim'] }}</td>
+                    <td>{{ $member['email'] }}</td>
+                    <td>{{ $member['nomor_telepon'] }}</td>
+                    <td>{{ ucfirst($member['status']) }}</td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="6">Belum ada data anggota.</td>
+                </tr>
+            @endforelse
+        </tbody>
     </table>
+
+    <p><em>Catatan: data di atas masih data dummy (array statis di Controller). Form tambah/edit anggota dan CRUD lengkap anggota baru dibuat mulai Pertemuan 5.</em></p>
 @endsection
 ```
 
